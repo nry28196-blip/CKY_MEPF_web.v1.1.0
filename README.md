@@ -80,13 +80,14 @@ The production output will be generated inside the `dist/` directory.
 
 ## 🌐 Deploying to GitHub Pages
 
-This repository includes a pre-configured GitHub Actions workflow for zero-config deployments:
+This repository includes an automated GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds the React application and deploys it to the `gh-pages` branch:
 
 1. Push this repository to GitHub on branch `main`.
-2. Go to **Settings** > **Pages** in your GitHub repository.
-3. Under **Build and deployment** > **Source**, select **GitHub Actions**.
-4. The `.github/workflows/deploy.yml` workflow will automatically build and publish the site.
-5. If deploying under a specific base path or custom domain, configure `BASE_URL` or use relative asset paths (default is `./` which works on any path).
+2. The GitHub Action will automatically run, build the bundle, and push the output to the `gh-pages` branch.
+3. In GitHub, go to **Settings** > **Pages**.
+4. Under **Build and deployment** > **Source**, choose **Deploy from a branch**.
+5. Select the **`gh-pages`** branch and `/ (root)` folder, then click **Save**.
+6. The application uses relative asset paths (`./`), so it will render properly on any repository URL or custom domain without path errors.
 
 ---
 
