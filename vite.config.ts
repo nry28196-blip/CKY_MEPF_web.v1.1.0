@@ -6,10 +6,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   return {
-    // REQUIRED FOR GITHUB PAGES: 
-    // Matches your repository name so assets load correctly.
-    // NOTE: If you link a custom domain later (like cky-mepf.com), change this back to '/'
-    base: '/CKY_MEPF_web/',
+    // Robust base URL: defaults to relative './' so it works on any GitHub Pages repo name, custom domain, or subpath
+    base: process.env.BASE_URL || './',
     
     plugins: [
       react(), 
