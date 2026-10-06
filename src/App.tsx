@@ -71,7 +71,6 @@ import PdfExportConfigModal from './components/PdfExportConfigModal';
 import ProjectManagerModal from './components/ProjectManagerModal';
 import BatchUnitConvertModal from './components/BatchUnitConvertModal';
 import AuditTrailOverlayModal from './components/AuditTrailOverlayModal';
-import MechanicalPerformanceDashboard from './components/MechanicalPerformanceDashboard';
 import SidebarConversionList from './components/SidebarConversionList';
 import { useLanguage } from './lib/translations';
 import { exportElementToPdf } from './lib/exportPdf';
@@ -193,10 +192,7 @@ export default function App() {
   // Precise active module identifier resolver across all Mechanical / HVAC subordinates
   const getActiveMechModuleId = useCallback((subId?: string): string => {
     const targetSub = subId || activeSubordinates.mechanical || 'cooling';
-    if (targetSub === 'ventilation') {
-      return ventilationSubMode || mechanicalModules.ventilation || 'calculation';
-    }
-    return mechanicalModules[targetSub] || DEFAULT_MECHANICAL_MODULES[targetSub] || 'estimate';
+    return resolveActiveMechanicalModule(targetSub, mechanicalModules, ventilationSubMode);
   }, [activeSubordinates.mechanical, ventilationSubMode, mechanicalModules]);
 
   // Active screen identity key: changes whenever user navigates to another screen, module, or saved run
@@ -843,18 +839,8 @@ export default function App() {
     if (activeTab === 'mechanical') {
       const currentSubId = activeSubordinates.mechanical;
       const subItem = mainSystems.find(m => m.id === 'mechanical')?.subordinates.find(s => s.id === currentSubId);
-      const subLabel = subItem?.label || SUBORDINATE_LABELS[currentSubId] || 'Cooling Load';
-      
       const currentModuleId = getActiveMechModuleId(currentSubId);
-      
-      // Strictly resolve module label from MECHANICAL_MODULE_METADATA and SUB_SYSTEM_MODULES
-      const metaLabel = MECHANICAL_MODULE_METADATA[currentSubId]?.[currentModuleId]?.label;
-      const subModuleItem = SUB_SYSTEM_MODULES[currentSubId]?.find(m => m.id === currentModuleId);
-      const moduleLabel = metaLabel || subModuleItem?.label || (
-        currentModuleId ? currentModuleId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Module'
-      );
-      
-      return `Mechanical / HVAC / ${subLabel} / ${moduleLabel}`;
+      return getMechanicalBreadcrumbs(currentSubId, currentModuleId, subItem?.label);
     }
     const currentMain = mainSystems.find(m => m.id === activeTab);
     const currentSubId = activeSubordinates[activeTab];
@@ -868,27 +854,8 @@ export default function App() {
     if (activeTab === 'mechanical') {
       const currentSub = activeSubordinates.mechanical;
       const currentModId = getActiveMechModuleId(currentSub);
-      
-      // Strictly resolve page title from MECHANICAL_MODULE_METADATA configuration object
-      const metaTitle = MECHANICAL_MODULE_METADATA[currentSub]?.[currentModId]?.pageTitle;
-      if (metaTitle) {
-        return metaTitle;
-      }
-
-      // Default module title fallback from MECHANICAL_MODULE_METADATA
-      const defaultModId = DEFAULT_MECHANICAL_MODULES[currentSub] || 'estimate';
-      const defaultMetaTitle = MECHANICAL_MODULE_METADATA[currentSub]?.[defaultModId]?.pageTitle;
-      if (defaultMetaTitle) {
-        return defaultMetaTitle;
-      }
-      
       const subItem = mainSystems.find(m => m.id === 'mechanical')?.subordinates.find(s => s.id === currentSub);
-      const subLabel = subItem?.label || SUBORDINATE_LABELS[currentSub] || 'Mechanical';
-      const subModuleItem = SUB_SYSTEM_MODULES[currentSub]?.find(m => m.id === currentModId);
-      if (subModuleItem?.label) {
-        return `${subLabel} - ${subModuleItem.label}`;
-      }
-      return `${subLabel} Calculator`;
+      return getMechanicalPageTitle(currentSub, currentModId, subItem?.label);
     }
     if (activeTab === 'plumbing') {
       const sub = activeSubordinates.plumbing;
@@ -1833,23 +1800,11 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
 
-          {/* Performance Dashboard Card for Mechanical / HVAC workspace */}
-          {activeTab === 'mechanical' && (
-            <div data-pdf-section="performance-dashboard" className="mt-8 pt-6 border-t border-slate-800/80">
-              <MechanicalPerformanceDashboard
-                activeSub={activeSubordinates.mechanical}
-                activeModule={getActiveMechModuleId(activeSubordinates.mechanical)}
-                lastCalculationResult={lastCalculationResult}
-              />
-            </div>
-          )}
-
-          {/* Interactive Reference Card Component */}
-          {!(activeTab === 'mechanical' && activeSubordinates.mechanical === 'psychrometrics') && (
+          {/* Interactive Reference Card Component (Preserved for non-Mechanical systems) */}
+          {activeTab !== 'mechanical' && (
             <div data-pdf-section="formulas" className="mt-8 pt-6 border-t border-slate-800/80">
               <InteractiveFormulaReferenceCard
                 activeTab={activeTab}
-                subTab={activeTab === 'mechanical' ? (activeSubordinates.mechanical as any) : undefined}
               />
             </div>
           )}
