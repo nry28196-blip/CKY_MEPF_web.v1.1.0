@@ -281,13 +281,16 @@ export default function App() {
     });
   }, []);
 
-  // Stable callback for mechanical subtab synchronization
-  const handleMechanicalSubTabChange = useCallback((sub: string) => {
-    setActiveSubordinates((prev: Record<string, string>) => {
-      if (prev.mechanical === sub) return prev;
-      return { ...prev, mechanical: sub };
-    });
-  }, []);
+  // Default module for each Level 2 Mechanical / HVAC subordinate system
+  const DEFAULT_MECHANICAL_MODULES: Record<string, string> = {
+    cooling: 'estimate',
+    ventilation: 'calculation',
+    psychrometrics: 'properties',
+    ductSizing: 'equal_friction',
+    fanDuty: 'pressure',
+    kitchenHood: 'capture',
+    heatRecovery: 'hrv_sizing'
+  };
 
   // MAIN SYSTEMS: 5 MAJOR SYSTEMS WITH SUBORDINATE SYSTEMS (SECTION 1, 2, 6)
   const mainSystems: Array<{
@@ -388,20 +391,31 @@ export default function App() {
 
   // Subordinate System Selection Handler
   const handleSelectSubordinate = (systemId: TabType, subId: string) => {
+    // 1. Set parent system as active
     setActiveTab(systemId);
+    // 2. Set subordinate system as active
     setActiveSubordinates(prev => ({
       ...prev,
       [systemId]: subId
     }));
-    // Keep parent expanded
+    // 3. Keep parent expanded
     setExpandedParents(prev => ({
       ...prev,
       [systemId]: true
     }));
-    if (systemId === 'mechanical' && subId === 'ventilation') {
-      setVentilationSubMode('calculation');
-      setMechanicalModules(prev => ({ ...prev, ventilation: 'calculation' }));
+    // 4. Reset the appropriate module to that subordinate system's default module
+    if (systemId === 'mechanical') {
+      const defaultMod = DEFAULT_MECHANICAL_MODULES[subId] || 'estimate';
+      setMechanicalModules(prev => ({
+        ...prev,
+        [subId]: defaultMod
+      }));
+      if (subId === 'ventilation') {
+        setVentilationSubMode('calculation');
+      }
     }
+    setRestoredParams(null);
+    // 5. Scroll calculation workspace to the top
     scrollWorkspaceToTop();
   };
 
@@ -768,10 +782,16 @@ export default function App() {
       ...prev,
       [item.systemId]: true
     }));
-    if (item.systemId === 'mechanical' && item.subId === 'ventilation' && item.ventSubMode) {
-      setVentilationSubMode(item.ventSubMode);
-      setMechanicalModules(prev => ({ ...prev, ventilation: item.ventSubMode! }));
+    if (item.systemId === 'mechanical') {
+      if (item.subId === 'ventilation' && item.ventSubMode) {
+        setVentilationSubMode(item.ventSubMode);
+        setMechanicalModules(prev => ({ ...prev, ventilation: item.ventSubMode! }));
+      } else {
+        const defaultMod = DEFAULT_MECHANICAL_MODULES[item.subId] || 'estimate';
+        setMechanicalModules(prev => ({ ...prev, [item.subId]: defaultMod }));
+      }
     }
+    setRestoredParams(null);
     scrollWorkspaceToTop();
   };
 
@@ -873,24 +893,24 @@ export default function App() {
     return [];
   };
 
-  // TOP SUB-SYSTEM PANEL TITLE (SECTION 3 & 4)
+  // TOP SUB-SYSTEM PANEL TITLE (LEVEL 3 MODULE SELECTOR)
   const getSubPanelTitle = () => {
     if (activeTab === 'mechanical') {
       const currentSub = activeSubordinates.mechanical;
-      if (currentSub === 'cooling') return 'COOLING LOAD MODULES';
-      if (currentSub === 'ventilation') return 'VENTILATION MODULES';
-      if (currentSub === 'psychrometrics') return 'PSYCHROMETRIC MODULES';
-      if (currentSub === 'ductSizing') return 'DUCT DESIGN MODULES';
-      if (currentSub === 'fanDuty') return 'FAN SELECTION MODULES';
-      if (currentSub === 'kitchenHood') return 'KITCHEN HOOD MODULES';
-      if (currentSub === 'heatRecovery') return 'HEAT RECOVERY MODULES';
-      return 'MECHANICAL MODULES';
+      if (currentSub === 'cooling') return 'COOLING LOAD';
+      if (currentSub === 'ventilation') return 'VENTILATION';
+      if (currentSub === 'psychrometrics') return 'PSYCHROMETRICS';
+      if (currentSub === 'ductSizing') return 'DUCT DESIGN';
+      if (currentSub === 'fanDuty') return 'FAN SELECTION';
+      if (currentSub === 'kitchenHood') return 'KITCHEN HOOD';
+      if (currentSub === 'heatRecovery') return 'HEAT RECOVERY';
+      return 'MECHANICAL / HVAC';
     }
-    if (activeTab === 'plumbing') return 'PLUMBING MODULES';
-    if (activeTab === 'fire') return 'FIRE FIGHTING MODULES';
-    if (activeTab === 'electrical') return 'ELECTRICAL MODULES';
-    if (activeTab === 'bulk') return 'BULK BATCH MODULES';
-    return 'SYSTEM MODULES';
+    if (activeTab === 'plumbing') return 'PLUMBING';
+    if (activeTab === 'fire') return 'FIRE FIGHTING';
+    if (activeTab === 'electrical') return 'ELECTRICAL';
+    if (activeTab === 'bulk') return 'BULK';
+    return 'SYSTEM';
   };
 
   // Breadcrumb generation (Section 8 & 9)
@@ -1451,8 +1471,17 @@ export default function App() {
               
               {/* Left: Breadcrumbs & Title */}
               <div>
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400 font-semibold mb-1">
-                  <span>{getBreadcrumbs()}</span>
+                <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold mb-1 flex-wrap">
+                  {getBreadcrumbs().split(' / ').map((segment, idx, arr) => (
+                    <React.Fragment key={idx}>
+                      <span className={idx === arr.length - 1 ? 'text-cyan-300 font-bold' : 'text-slate-400'}>
+                        {segment}
+                      </span>
+                      {idx < arr.length - 1 && (
+                        <span className="text-slate-600 font-normal">/</span>
+                      )}
+                    </React.Fragment>
+                  ))}
                 </div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
                   {getPageTitle()}
@@ -1514,7 +1543,7 @@ export default function App() {
             </div>
           </header>
 
-          {/* B. TOP SUB-SYSTEM PANEL (SECTION 4: VENTILATION MODULES) */}
+          {/* B. TOP MODULE PANEL (LEVEL 3 MODULE SELECTOR) */}
           <section className="bg-[#090F22] border-b border-slate-800/80 px-6 py-2.5 sub-system-nav-panel">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               
