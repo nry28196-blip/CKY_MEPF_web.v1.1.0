@@ -58,7 +58,9 @@ import SystemPerformanceCalc from './components/SystemPerformanceCalc';
 import VentilationReportsView from './components/VentilationReportsView';
 import DuctSizingCalc from './components/DuctSizingCalc';
 import StaticPressureCalc from './components/StaticPressureCalc';
+import DuctFittingsLossView from './components/DuctFittingsLossView';
 import KitchenVentilationCalc from './components/KitchenVentilationCalc';
+import NotYetImplementedModuleCard from './components/common/NotYetImplementedModuleCard';
 import IAQCalc from './components/IAQCalc';
 import InteractiveFormulaReferenceCard from './components/InteractiveFormulaReferenceCard';
 import QuickActionsMenu from './components/QuickActionsMenu';
@@ -76,8 +78,19 @@ import { exportElementToPdf } from './lib/exportPdf';
 import { useUnit } from './lib/UnitContext';
 import { scrollWorkspaceToTop } from './lib/scrollUtils';
 import { getProjects } from './lib/projectStorage';
+import {
+  VentilationSubMode,
+  DEFAULT_MECHANICAL_MODULES,
+  MECHANICAL_MODULE_METADATA,
+  SUB_SYSTEM_MODULES,
+  SUBORDINATE_LABELS,
+  resolveActiveMechanicalModule,
+  getMechanicalBreadcrumbs,
+  getMechanicalPageTitle
+} from './lib/navigationUtils';
 
-export type VentilationSubMode = 'calculation' | 'exhaust' | 'balance' | 'reports';
+export { DEFAULT_MECHANICAL_MODULES, MECHANICAL_MODULE_METADATA, SUB_SYSTEM_MODULES, SUBORDINATE_LABELS };
+export type { VentilationSubMode };
 
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
@@ -177,9 +190,18 @@ export default function App() {
 
   const [restoredParams, setRestoredParams] = useState<HistoryItem | null>(null);
 
+  // Precise active module identifier resolver across all Mechanical / HVAC subordinates
+  const getActiveMechModuleId = useCallback((subId?: string): string => {
+    const targetSub = subId || activeSubordinates.mechanical || 'cooling';
+    if (targetSub === 'ventilation') {
+      return ventilationSubMode || mechanicalModules.ventilation || 'calculation';
+    }
+    return mechanicalModules[targetSub] || DEFAULT_MECHANICAL_MODULES[targetSub] || 'estimate';
+  }, [activeSubordinates.mechanical, ventilationSubMode, mechanicalModules]);
+
   // Active screen identity key: changes whenever user navigates to another screen, module, or saved run
   const currentMechModule = activeTab === 'mechanical'
-    ? (activeSubordinates.mechanical === 'ventilation' ? ventilationSubMode : (mechanicalModules[activeSubordinates.mechanical] || ''))
+    ? getActiveMechModuleId(activeSubordinates.mechanical)
     : '';
   const activeScreenKey = `${activeTab}-${activeSubordinates[activeTab] || ''}-${currentMechModule}-${restoredParams?.id || ''}`;
 
@@ -280,17 +302,6 @@ export default function App() {
       return details;
     });
   }, []);
-
-  // Default module for each Level 2 Mechanical / HVAC subordinate system
-  const DEFAULT_MECHANICAL_MODULES: Record<string, string> = {
-    cooling: 'estimate',
-    ventilation: 'calculation',
-    psychrometrics: 'properties',
-    ductSizing: 'equal_friction',
-    fanDuty: 'pressure',
-    kitchenHood: 'capture',
-    heatRecovery: 'hrv_sizing'
-  };
 
   // MAIN SYSTEMS: 5 MAJOR SYSTEMS WITH SUBORDINATE SYSTEMS (SECTION 1, 2, 6)
   const mainSystems: Array<{
@@ -799,98 +810,12 @@ export default function App() {
   const getSubSystems = () => {
     if (activeTab === 'mechanical') {
       const currentSub = activeSubordinates.mechanical;
-      if (currentSub === 'cooling') {
-        return [
-          { id: 'estimate', label: 'Load Estimate' },
-          { id: 'vrf', label: 'VRF Analysis' },
-          { id: 'schedules', label: 'Equipment Schedules' },
-          { id: 'reports', label: 'Reports' }
-        ];
-      }
-      if (currentSub === 'ventilation') {
-        return [
-          { id: 'calculation', label: 'Calculation' },
-          { id: 'exhaust', label: 'Exhaust' },
-          { id: 'balance', label: 'Air Balance' },
-          { id: 'reports', label: 'Reports' }
-        ];
-      }
-      if (currentSub === 'psychrometrics') {
-        return [
-          { id: 'properties', label: 'Psychrometric State' },
-          { id: 'comfort', label: 'Thermodynamics & Enthalpy' },
-          { id: 'references', label: 'Formulas & References' }
-        ];
-      }
-      if (currentSub === 'ductSizing') {
-        return [
-          { id: 'equal_friction', label: 'Equal Friction' },
-          { id: 'static_regain', label: 'Static Regain' },
-          { id: 'fittings', label: 'Fittings Loss' },
-          { id: 'critical_path', label: 'Critical Path' }
-        ];
-      }
-      if (currentSub === 'fanDuty') {
-        return [
-          { id: 'pressure', label: 'Static Pressure' },
-          { id: 'fan_curve', label: 'Fan Curve' },
-          { id: 'selection', label: 'Motor Selection' },
-          { id: 'reports', label: 'Reports' }
-        ];
-      }
-      if (currentSub === 'kitchenHood') {
-        return [
-          { id: 'capture', label: 'Capture & Containment' },
-          { id: 'grease', label: 'Grease Filters' },
-          { id: 'mua', label: 'Make-Up Air' }
-        ];
-      }
-      if (currentSub === 'heatRecovery') {
-        return [
-          { id: 'hrv_sizing', label: 'HRV / ERV Sizing' },
-          { id: 'aerodynamics', label: 'Aerodynamic Performance' },
-          { id: 'efficiency', label: 'Energy Effectiveness' },
-          { id: 'reports', label: 'Reports' }
-        ];
-      }
-      return [
+      return SUB_SYSTEM_MODULES[currentSub] || [
         { id: 'overview', label: 'System Overview' },
         { id: 'reports', label: 'Engineering Report' }
       ];
     }
-    if (activeTab === 'plumbing') {
-      return [
-        { id: 'fixtures', label: 'Fixtures & Units' },
-        { id: 'tanks', label: 'Storage Tanks' },
-        { id: 'pumps', label: 'Booster Pumps' },
-        { id: 'reports', label: 'Reports' }
-      ];
-    }
-    if (activeTab === 'fire') {
-      return [
-        { id: 'equipment', label: 'Sprinklers' },
-        { id: 'sizing', label: 'Hydraulic Sizing' },
-        { id: 'pumps', label: 'Fire Pumps' },
-        { id: 'reports', label: 'Reports' }
-      ];
-    }
-    if (activeTab === 'electrical') {
-      return [
-        { id: 'flc', label: 'Motor FLC' },
-        { id: 'vd', label: 'Voltage Drop' },
-        { id: 'ups', label: 'UPS Sizing' },
-        { id: 'elv', label: 'ELV Battery' }
-      ];
-    }
-    if (activeTab === 'bulk') {
-      return [
-        { id: 'duct', label: 'Duct Sizing' },
-        { id: 'cooling', label: 'Cooling Load' },
-        { id: 'flc', label: 'Electrical FLC' },
-        { id: 'pipe', label: 'Pipe Sizing' }
-      ];
-    }
-    return [];
+    return SUB_SYSTEM_MODULES[activeTab] || [];
   };
 
   // TOP SUB-SYSTEM PANEL TITLE (LEVEL 3 MODULE SELECTOR)
@@ -913,69 +838,95 @@ export default function App() {
     return 'SYSTEM';
   };
 
-  // Breadcrumb generation (Section 8 & 9)
+  // Breadcrumb generation (reflects currently active module identifier strictly from MECHANICAL_MODULE_METADATA & SUB_SYSTEM_MODULES)
   const getBreadcrumbs = () => {
     if (activeTab === 'mechanical') {
       const currentSubId = activeSubordinates.mechanical;
       const subItem = mainSystems.find(m => m.id === 'mechanical')?.subordinates.find(s => s.id === currentSubId);
-      const subLabel = subItem?.label || 'Cooling Load';
+      const subLabel = subItem?.label || SUBORDINATE_LABELS[currentSubId] || 'Cooling Load';
       
-      const currentModuleId = currentSubId === 'ventilation'
-        ? ventilationSubMode
-        : (mechanicalModules[currentSubId] || getSubSystems()[0]?.id);
-      const moduleItem = getSubSystems().find(m => m.id === currentModuleId);
-      const moduleLabel = moduleItem?.label || 'Module';
+      const currentModuleId = getActiveMechModuleId(currentSubId);
+      
+      // Strictly resolve module label from MECHANICAL_MODULE_METADATA and SUB_SYSTEM_MODULES
+      const metaLabel = MECHANICAL_MODULE_METADATA[currentSubId]?.[currentModuleId]?.label;
+      const subModuleItem = SUB_SYSTEM_MODULES[currentSubId]?.find(m => m.id === currentModuleId);
+      const moduleLabel = metaLabel || subModuleItem?.label || (
+        currentModuleId ? currentModuleId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Module'
+      );
       
       return `Mechanical / HVAC / ${subLabel} / ${moduleLabel}`;
     }
     const currentMain = mainSystems.find(m => m.id === activeTab);
-    const currentSub = currentMain?.subordinates.find(s => s.id === activeSubordinates[activeTab]);
-    return `${currentMain?.label || 'Engineering'} / ${currentSub?.label || 'Calculation'}`;
+    const currentSubId = activeSubordinates[activeTab];
+    const currentSub = currentMain?.subordinates.find(s => s.id === currentSubId);
+    const subModuleItem = SUB_SYSTEM_MODULES[activeTab]?.find(m => m.id === currentSubId);
+    return `${currentMain?.label || 'Engineering'} / ${currentSub?.label || subModuleItem?.label || 'Calculation'}`;
   };
 
-  // Page title generation
+  // Page title generation (strictly resolves titles from MECHANICAL_MODULE_METADATA configuration object)
   const getPageTitle = () => {
     if (activeTab === 'mechanical') {
       const currentSub = activeSubordinates.mechanical;
-      if (currentSub === 'cooling') {
-        const mod = mechanicalModules.cooling || 'estimate';
-        switch (mod) {
-          case 'vrf': return 'Multi-Space VRF System Analysis';
-          case 'schedules': return 'Cooling & VRF Equipment Schedules';
-          case 'reports': return 'Cooling Compliance & Audit Report';
-          case 'estimate':
-          default:
-            return 'Cooling Load Estimate';
-        }
+      const currentModId = getActiveMechModuleId(currentSub);
+      
+      // Strictly resolve page title from MECHANICAL_MODULE_METADATA configuration object
+      const metaTitle = MECHANICAL_MODULE_METADATA[currentSub]?.[currentModId]?.pageTitle;
+      if (metaTitle) {
+        return metaTitle;
       }
-      if (currentSub === 'ventilation') {
-        switch (ventilationSubMode) {
-          case 'exhaust': return 'Commercial Exhaust Calculator';
-          case 'balance': return 'Air Balance & Pressurization';
-          case 'reports': return 'Ventilation Compliance Report & Audit';
-          case 'calculation':
-          default:
-            return 'Ventilation Calculator';
-        }
+
+      // Default module title fallback from MECHANICAL_MODULE_METADATA
+      const defaultModId = DEFAULT_MECHANICAL_MODULES[currentSub] || 'estimate';
+      const defaultMetaTitle = MECHANICAL_MODULE_METADATA[currentSub]?.[defaultModId]?.pageTitle;
+      if (defaultMetaTitle) {
+        return defaultMetaTitle;
       }
-      if (currentSub === 'psychrometrics') return 'Psychrometric & Thermodynamic Analysis';
-      if (currentSub === 'ductSizing') return 'Duct Design & Hydraulic Sizing';
-      if (currentSub === 'fanDuty') return 'Fan Selection & Critical Path Static Pressure';
-      if (currentSub === 'kitchenHood') return 'Commercial Kitchen Ventilation & Grease Hoods';
-      if (currentSub === 'heatRecovery') return 'Heat Recovery & Aerodynamic Performance';
+      
+      const subItem = mainSystems.find(m => m.id === 'mechanical')?.subordinates.find(s => s.id === currentSub);
+      const subLabel = subItem?.label || SUBORDINATE_LABELS[currentSub] || 'Mechanical';
+      const subModuleItem = SUB_SYSTEM_MODULES[currentSub]?.find(m => m.id === currentModId);
+      if (subModuleItem?.label) {
+        return `${subLabel} - ${subModuleItem.label}`;
+      }
+      return `${subLabel} Calculator`;
     }
-    if (activeTab === 'plumbing') return 'Plumbing Water Supply & Drainage';
-    if (activeTab === 'fire') return 'Fire Protection & Standpipe Hydraulics';
-    if (activeTab === 'electrical') return 'Electrical FLC & Cable Sizing';
-    if (activeTab === 'bulk') return 'Bulk Batch Calculation Suite';
+    if (activeTab === 'plumbing') {
+      const sub = activeSubordinates.plumbing;
+      if (sub === 'tanks') return 'Water Storage Tank Sizing';
+      if (sub === 'pumps') return 'Booster & Transfer Pump Sizing';
+      if (sub === 'formulas') return 'IPC Reference Standards';
+      return 'Water Supply Fixture Units (WSFU) & Drainage';
+    }
+    if (activeTab === 'fire') {
+      const sub = activeSubordinates.fire;
+      if (sub === 'sizing') return 'Hydraulic & Standpipe Sizing';
+      if (sub === 'pump') return 'Fire Pump & Pressure Calculation';
+      if (sub === 'formulas') return 'NFPA 13/14 Standards & Density';
+      return 'Sprinkler Head & Fire Hazard Sizing';
+    }
+    if (activeTab === 'electrical') {
+      const sub = activeSubordinates.electrical;
+      if (sub === 'vd') return 'Voltage Drop & Cable Sizing';
+      if (sub === 'ups') return 'UPS Battery Sizing & Autonomy';
+      if (sub === 'elv_ups') return 'ELV Emergency Power Backup';
+      if (sub === 'formulas') return 'NEC / IEC Electrical Standards';
+      return 'Full Load Current (FLC) Calculation';
+    }
+    if (activeTab === 'bulk') {
+      const sub = activeSubordinates.bulk;
+      if (sub === 'batch_cooling') return 'Batch Cooling Load Sizing';
+      if (sub === 'batch_flc') return 'Batch Electrical FLC Sizing';
+      if (sub === 'batch_pipe') return 'Batch Pipe Sizing';
+      return 'Bulk Duct Sizing Calculation';
+    }
     return 'Engineering Calculator';
   };
 
   const getPageSubtitle = () => {
     if (activeTab === 'mechanical') {
       const currentSub = activeSubordinates.mechanical;
+      const mod = getActiveMechModuleId(currentSub);
       if (currentSub === 'cooling') {
-        const mod = mechanicalModules.cooling || 'estimate';
         switch (mod) {
           case 'vrf': return 'Optimize multi-zone VRF systems, refrigerant piping distribution, and outdoor unit sizing';
           case 'schedules': return 'Engineering schedules for indoor fan coils, cassettes, and outdoor condensing units';
@@ -986,7 +937,7 @@ export default function App() {
         }
       }
       if (currentSub === 'ventilation') {
-        switch (ventilationSubMode) {
+        switch (mod) {
           case 'exhaust': return 'Prescriptive exhaust airflow sizing compliant with ASHRAE 62.1 Table 6-5 & 6-6';
           case 'balance': return 'Building air pressurization balance, envelope infiltration, and net airflow distribution';
           case 'reports': return 'Authoritative ASHRAE 62.1-2022 compliance documentation and mathematical audit trail';
@@ -995,11 +946,59 @@ export default function App() {
             return 'Calculate required outdoor air ventilation rates per ASHRAE 62.1-2022';
         }
       }
-      if (currentSub === 'psychrometrics') return 'Psychrometric state properties, humidity ratio, moist air density, and enthalpy calculations';
-      if (currentSub === 'ductSizing') return 'Air distribution sizing using Equal Friction and SMACNA standard guidelines';
-      if (currentSub === 'fanDuty') return 'Total external static pressure, duct fittings loss, fan curve, and motor BHP';
-      if (currentSub === 'kitchenHood') return 'Thermal plume capture airflow, grease filter sizing, and dedicated make-up air balance';
-      if (currentSub === 'heatRecovery') return 'Sensible and latent energy recovery efficiency, aerodynamic pressure, and net fan duty';
+      if (currentSub === 'psychrometrics') {
+        const mod = mechanicalModules.psychrometrics || 'properties';
+        switch (mod) {
+          case 'references': return 'Grounded mathematical formulas and unit conversions from ASHRAE Fundamentals Chapter 1';
+          case 'comfort': return 'Enthalpy states, sensible/latent heat ratios, and psychrometric process lines';
+          case 'properties':
+          default:
+            return 'Moist air state properties: dry bulb, wet bulb, dew point, relative humidity, and humidity ratio';
+        }
+      }
+      if (currentSub === 'ductSizing') {
+        const mod = mechanicalModules.ductSizing || 'equal_friction';
+        switch (mod) {
+          case 'critical_path': return 'Identify the index run with highest cumulative resistance across parallel duct paths';
+          case 'fittings': return 'Loss coefficients (Co) and dynamic velocity pressure drop per ASHRAE Fitting Database';
+          case 'static_regain': return 'Velocity conversion to static pressure for balanced terminal takeoffs';
+          case 'equal_friction':
+          default:
+            return 'Air distribution sizing using Equal Friction and SMACNA standard guidelines';
+        }
+      }
+      if (currentSub === 'fanDuty') {
+        const mod = mechanicalModules.fanDuty || 'pressure';
+        switch (mod) {
+          case 'fan_curve': return 'System resistance curve overlay against manufacturer aerodynamic fan curve';
+          case 'selection': return 'Shaft brake horsepower (BHP), drive loss, and electrical motor frame size';
+          case 'reports': return 'Submittal documentation with fan duty points, RPM, sound power levels, and electrical specs';
+          case 'pressure':
+          default:
+            return 'Total external static pressure, duct fittings loss, and critical path analysis';
+        }
+      }
+      if (currentSub === 'kitchenHood') {
+        const mod = mechanicalModules.kitchenHood || 'capture';
+        switch (mod) {
+          case 'grease': return 'UL 1046 listed baffle filter specifications, extraction efficiency, and IMC 500 FPM minimum grease duct velocity';
+          case 'mua': return 'Dedicated make-up air percentage balance: transfer, ceiling diffusers, and perimeter supply';
+          case 'capture':
+          default:
+            return 'Thermal plume capture airflow, cooking equipment duty, and hood geometry sizing';
+        }
+      }
+      if (currentSub === 'heatRecovery') {
+        const mod = mechanicalModules.heatRecovery || 'hrv_sizing';
+        switch (mod) {
+          case 'aerodynamics': return 'Matrix pressure loss, face velocity, and supply/exhaust fan static balancing';
+          case 'efficiency': return 'Sensible recovery effectiveness (SRE) and total energy recovery effectiveness (TRE) per AHRI 1060';
+          case 'reports': return 'Seasonal energy savings, peak coil load reduction, and ASHRAE 90.1 compliance submittals';
+          case 'hrv_sizing':
+          default:
+            return 'Plate heat exchanger (HRV) and enthalpy wheel (ERV) ventilation recovery sizing';
+        }
+      }
     }
     return 'Professional MEP engineering calculations compliant with international codes';
   };
@@ -1054,31 +1053,230 @@ export default function App() {
         }
       }
       if (currentSub === 'psychrometrics') {
+        const mod = mechanicalModules.psychrometrics || 'properties';
+        if (mod === 'references') {
+          return (
+            <InteractiveFormulaReferenceCard
+              activeTab="mechanical"
+              subTab="all"
+              defaultExpanded={true}
+            />
+          );
+        }
+        if (mod === 'properties') {
+          return (
+            <NotYetImplementedModuleCard
+              system="Mechanical / HVAC"
+              subordinate="Psychrometrics"
+              module="Psychrometric State"
+              standard="ASHRAE Fundamentals Chapter 1 (Psychrometrics)"
+              customDescription="Interactive psychrometric state property calculation: Dry bulb, wet bulb, dew point, relative humidity, humidity ratio, and moist air specific volume."
+              plannedFeatures={[
+                'Moist air state calculation (Dry bulb, Wet bulb, Dew point, Relative humidity, Enthalpy, Humidity ratio)',
+                'Barometric pressure and altitude psychrometric corrections',
+                'Interactive psychrometric state point plotting and process lines'
+              ]}
+              fallbackModuleId="references"
+              fallbackModuleLabel="Formulas & References"
+              onNavigateFallback={() => {
+                setMechanicalModules(prev => ({ ...prev, psychrometrics: 'references' }));
+                scrollWorkspaceToTop();
+              }}
+            />
+          );
+        }
         return (
-          <InteractiveFormulaReferenceCard
-            activeTab="mechanical"
-            subTab="psychrometrics"
-            defaultExpanded={true}
+          <NotYetImplementedModuleCard
+            system="Mechanical / HVAC"
+            subordinate="Psychrometrics"
+            module="Thermodynamics & Enthalpy"
+            standard="ASHRAE Fundamentals Chapter 1"
+            customDescription="Thermodynamic enthalpy calculations: Sensible and latent heat ratios, air mixing, humidification, and sensible heating/cooling process lines."
+            plannedFeatures={[
+              'Sensible, latent, and total enthalpy change during heating and cooling processes',
+              'Humidification, dehumidification, and adiabatic air mixing calculations',
+              'Apparatus dew point (ADP) and cooling coil bypass factor determination'
+            ]}
+            fallbackModuleId="references"
+            fallbackModuleLabel="Formulas & References"
+            onNavigateFallback={() => {
+              setMechanicalModules(prev => ({ ...prev, psychrometrics: 'references' }));
+              scrollWorkspaceToTop();
+            }}
           />
         );
       }
       if (currentSub === 'ductSizing') {
+        const mod = mechanicalModules.ductSizing || 'equal_friction';
+        if (mod === 'equal_friction') {
+          return (
+            <DuctSizingCalc
+              restoredParams={restoredParams}
+              onSaveCalculation={addHistoryItem}
+              autoCalculate={autoCalculate}
+            />
+          );
+        }
+        if (mod === 'critical_path') {
+          return <StaticPressureCalc />;
+        }
+        if (mod === 'fittings') {
+          return <DuctFittingsLossView />;
+        }
         return (
-          <DuctSizingCalc
-            restoredParams={restoredParams}
-            onSaveCalculation={addHistoryItem}
-            autoCalculate={autoCalculate}
+          <NotYetImplementedModuleCard
+            system="Mechanical / HVAC"
+            subordinate="Duct Design"
+            module="Static Regain"
+            standard="SMACNA HVAC Duct Systems Design / ASHRAE Fundamentals Chapter 21"
+            customDescription="Static regain duct sizing method: Converting dynamic velocity pressure into static pressure to achieve balanced static pressure across all downstream air terminals."
+            plannedFeatures={[
+              'Section-by-section static regain calculation based on velocity reduction',
+              'Equal static pressure at each terminal diffuser branch takeoff',
+              'High-velocity commercial supply duct optimization'
+            ]}
+            fallbackModuleId="equal_friction"
+            fallbackModuleLabel="Equal Friction"
+            onNavigateFallback={() => {
+              setMechanicalModules(prev => ({ ...prev, ductSizing: 'equal_friction' }));
+              scrollWorkspaceToTop();
+            }}
           />
         );
       }
       if (currentSub === 'fanDuty') {
-        return <StaticPressureCalc />;
+        const mod = mechanicalModules.fanDuty || 'pressure';
+        if (mod === 'pressure') {
+          return <StaticPressureCalc />;
+        }
+        if (mod === 'fan_curve') {
+          return (
+            <NotYetImplementedModuleCard
+              system="Mechanical / HVAC"
+              subordinate="Fan Selection"
+              module="Fan Curve"
+              standard="AMCA Standard 210 / ISO 5801"
+              customDescription="Aerodynamic fan curve analysis: Overlaying calculated duct system resistance against manufacturer fan performance curves to pinpoint operating duty points."
+              plannedFeatures={[
+                'Fan operating curve vs. system resistance curve overlay',
+                'Duty point intersection (Airflow vs. Total Static Pressure)',
+                'Variable frequency drive (VFD) affinity law speed curves'
+              ]}
+              fallbackModuleId="pressure"
+              fallbackModuleLabel="Static Pressure"
+              onNavigateFallback={() => {
+                setMechanicalModules(prev => ({ ...prev, fanDuty: 'pressure' }));
+                scrollWorkspaceToTop();
+              }}
+            />
+          );
+        }
+        if (mod === 'selection') {
+          return (
+            <NotYetImplementedModuleCard
+              system="Mechanical / HVAC"
+              subordinate="Fan Selection"
+              module="Motor Selection"
+              standard="NEMA MG-1 / IEC 60034-30-1"
+              customDescription="Fan electrical motor sizing: Converting air power and fan mechanical efficiency into brake horsepower (BHP) and nominal motor kW ratings."
+              plannedFeatures={[
+                'Fan brake horsepower (BHP) and nominal motor kW selection',
+                'Transmission drive loss factor (direct drive vs. V-belt)',
+                'Premium efficiency (IE3 / IE4) electrical load estimation'
+              ]}
+              fallbackModuleId="pressure"
+              fallbackModuleLabel="Static Pressure"
+              onNavigateFallback={() => {
+                setMechanicalModules(prev => ({ ...prev, fanDuty: 'pressure' }));
+                scrollWorkspaceToTop();
+              }}
+            />
+          );
+        }
+        return (
+          <NotYetImplementedModuleCard
+            system="Mechanical / HVAC"
+            subordinate="Fan Selection"
+            module="Reports"
+            standard="AMCA Submittal Standard"
+            customDescription="Fan selection engineering report: Comprehensive schedule export including design CFM, external static pressure, fan RPM, motor size, and sound power levels."
+            plannedFeatures={[
+              'Fan schedule generation with operating CFM, TSP, RPM, and motor kW',
+              'Sound power level spectrum (octave bands 1 through 8)',
+              'Engineering compliance summary submittal PDF export'
+            ]}
+            fallbackModuleId="pressure"
+            fallbackModuleLabel="Static Pressure"
+            onNavigateFallback={() => {
+              setMechanicalModules(prev => ({ ...prev, fanDuty: 'pressure' }));
+              scrollWorkspaceToTop();
+            }}
+          />
+        );
       }
       if (currentSub === 'kitchenHood') {
-        return <KitchenVentilationCalc />;
+        const mod = (mechanicalModules.kitchenHood as any) || 'capture';
+        return (
+          <KitchenVentilationCalc
+            activeSection={mod}
+            onSectionChange={(sec) => {
+              setMechanicalModules(prev => ({ ...prev, kitchenHood: sec }));
+              scrollWorkspaceToTop();
+            }}
+          />
+        );
       }
       if (currentSub === 'heatRecovery') {
-        return <SystemPerformanceCalc />;
+        const mod = mechanicalModules.heatRecovery || 'hrv_sizing';
+        const moduleDetails: Record<string, { name: string; desc: string; planned: string[] }> = {
+          hrv_sizing: {
+            name: 'HRV / ERV Sizing',
+            desc: 'Heat & Energy Recovery Ventilator physical capacity sizing according to outdoor ventilation airflow and exhaust flow balance.',
+            planned: [
+              'Sensible energy recovery ventilator (HRV) core sizing (plate heat exchangers)',
+              'Total energy recovery ventilator (ERV) desiccant wheel sizing',
+              'Winter preheating and summer precooling coil load offsets'
+            ]
+          },
+          aerodynamics: {
+            name: 'Aerodynamic Performance',
+            desc: 'Airflow pressure drop across recovery matrix and balance of intake vs exhaust fan static pressure.',
+            planned: [
+              'Media face velocity and static pressure drop through heat exchange core',
+              'Internal leakage and exhaust air transfer ratio (EATR) evaluation per AHRI 1060',
+              'Supply and exhaust duct resistance balancing'
+            ]
+          },
+          efficiency: {
+            name: 'Energy Effectiveness',
+            desc: 'Sensible, latent, and total recovery effectiveness ratings per AHRI Standard 1060 and ASHRAE 90.1.',
+            planned: [
+              'Sensible recovery effectiveness (SRE) and total energy recovery effectiveness (TRE)',
+              'Net sensible coefficient of performance (COP) improvement',
+              'Annual energy savings and carbon emission reduction metrics'
+            ]
+          },
+          reports: {
+            name: 'Reports',
+            desc: 'Comprehensive heat recovery submittal schedules and energy compliance documentation.',
+            planned: [
+              'HRV / ERV equipment engineering schedules',
+              'ASHRAE 90.1 prescriptive energy recovery compliance certificates',
+              'Exportable engineering documentation and audit trail'
+            ]
+          }
+        };
+        const currentDetail = moduleDetails[mod] || moduleDetails.hrv_sizing;
+        return (
+          <NotYetImplementedModuleCard
+            system="Mechanical / HVAC"
+            subordinate="Heat Recovery"
+            module={currentDetail.name}
+            standard="AHRI Standard 1060 / ANSI/ASHRAE/IES Standard 90.1"
+            customDescription={currentDetail.desc}
+            plannedFeatures={currentDetail.planned}
+          />
+        );
       }
     }
 
@@ -1557,7 +1755,7 @@ export default function App() {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {getSubSystems().map(item => {
                     const currentMechModule = activeTab === 'mechanical'
-                      ? (activeSubordinates.mechanical === 'ventilation' ? ventilationSubMode : (mechanicalModules[activeSubordinates.mechanical] || getSubSystems()[0]?.id))
+                      ? getActiveMechModuleId(activeSubordinates.mechanical)
                       : '';
                     const isActive = activeTab === 'mechanical'
                       ? currentMechModule === item.id
@@ -1604,7 +1802,7 @@ export default function App() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase hidden md:inline">Current Module:</span>
                 <span className="text-xs font-mono font-bold text-cyan-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                   {activeTab === 'mechanical'
-                    ? (getSubSystems().find(m => m.id === (activeSubordinates.mechanical === 'ventilation' ? ventilationSubMode : (mechanicalModules[activeSubordinates.mechanical] || getSubSystems()[0]?.id)))?.label || 'MODULE').toUpperCase()
+                    ? (getSubSystems().find(m => m.id === getActiveMechModuleId(activeSubordinates.mechanical))?.label || 'MODULE').toUpperCase()
                     : (activeSubordinates[activeTab] || 'MAIN').toUpperCase()}
                 </span>
               </div>
@@ -1640,7 +1838,7 @@ export default function App() {
             <div data-pdf-section="performance-dashboard" className="mt-8 pt-6 border-t border-slate-800/80">
               <MechanicalPerformanceDashboard
                 activeSub={activeSubordinates.mechanical}
-                activeModule={activeSubordinates.mechanical === 'ventilation' ? ventilationSubMode : (mechanicalModules[activeSubordinates.mechanical] || 'estimate')}
+                activeModule={getActiveMechModuleId(activeSubordinates.mechanical)}
                 lastCalculationResult={lastCalculationResult}
               />
             </div>

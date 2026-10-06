@@ -16,14 +16,31 @@ import {
 } from '../calculations/ventilation/KitchenVentilationService';
 import { scrollWorkspaceToTop } from '../lib/scrollUtils';
 
-export default function KitchenVentilationCalc() {
+export type KitchenModuleSection = 'capture' | 'grease' | 'mua';
+
+interface KitchenVentilationCalcProps {
+  activeSection?: KitchenModuleSection;
+  onSectionChange?: (sec: KitchenModuleSection) => void;
+}
+
+export default function KitchenVentilationCalc({
+  activeSection = 'capture',
+  onSectionChange
+}: KitchenVentilationCalcProps) {
   const { t } = useLanguage();
   const { unitSystem } = useUnit();
   const isMetric = unitSystem === 'metric';
 
   useEffect(() => {
-    scrollWorkspaceToTop();
-  }, []);
+    if (activeSection === 'capture') {
+      scrollWorkspaceToTop();
+    } else {
+      const el = document.getElementById(`kitchen-${activeSection}-section`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [activeSection]);
 
   const [hoodStandard, setHoodStandard] = useState<KitchenHoodStandard>('unlisted');
   
@@ -117,11 +134,23 @@ export default function KitchenVentilationCalc() {
         </div>
       )}
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-5 flex items-center">
-            <ChefHat className="w-4 h-4 mr-2 text-rose-400" />
-            Kitchen Hood Parameters (Diagnostic)
-          </h3>
+      <div 
+        id="kitchen-capture-section"
+        className={`bg-slate-900 border rounded-xl p-5 shadow-lg transition-all ${
+          activeSection === 'capture' ? 'border-rose-500/70 ring-1 ring-rose-500/30' : 'border-slate-800'
+        }`}
+      >
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-sm font-semibold text-white flex items-center">
+              <ChefHat className="w-4 h-4 mr-2 text-rose-400" />
+              Kitchen Hood Parameters & Capture Velocity
+            </h3>
+            {activeSection === 'capture' && (
+              <span className="text-[10px] font-mono font-bold text-rose-400 bg-rose-950/40 border border-rose-800/60 px-2 py-0.5 rounded">
+                Active Module: Capture & Containment
+              </span>
+            )}
+          </div>
           
           <div className="flex bg-slate-950 p-1 rounded-lg mb-6 border border-slate-800">
             <button 
@@ -233,11 +262,23 @@ export default function KitchenVentilationCalc() {
             </div>
           </div>
         </div>
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
-          <h3 className="text-sm font-semibold text-white mb-5 flex items-center">
-             <Wind className="w-4 h-4 mr-2 text-sky-400" />
-             Localized Make-Up Air (MUA)
-          </h3>
+      <div 
+        id="kitchen-mua-section"
+        className={`bg-slate-900 border rounded-xl p-5 shadow-lg transition-all ${
+          activeSection === 'mua' ? 'border-sky-500/70 ring-1 ring-sky-500/30' : 'border-slate-800'
+        }`}
+      >
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-sm font-semibold text-white flex items-center">
+               <Wind className="w-4 h-4 mr-2 text-sky-400" />
+               Localized Make-Up Air (MUA) Balance
+            </h3>
+            {activeSection === 'mua' && (
+              <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-950/40 border border-sky-800/60 px-2 py-0.5 rounded">
+                Active Module: Make-Up Air
+              </span>
+            )}
+          </div>
           <div className="space-y-4">
             <div className="flex justify-between items-end mb-2">
                <span className="text-[10px] font-bold text-slate-400 uppercase">Total MUA Ratio</span>
@@ -388,13 +429,28 @@ export default function KitchenVentilationCalc() {
                    </div>
                    <p className="text-[10px] text-slate-500 mt-2">Required cross-section to maintain {ductVelocity} {velUnit}</p>
                 </div>
-                <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-lg">
-                   <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Design Guidelines</h4>
+                <div 
+                  id="kitchen-grease-section"
+                  className={`border rounded-lg p-4 transition-all ${
+                    activeSection === 'grease' ? 'bg-amber-950/20 border-amber-500/70 ring-1 ring-amber-500/40' : 'bg-slate-900/50 border-slate-800'
+                  }`}
+                >
+                   <div className="flex items-center justify-between mb-2">
+                     <h4 className="text-[10px] font-bold text-slate-300 uppercase">
+                       Grease Filter & Exhaust Guidelines
+                     </h4>
+                     {activeSection === 'grease' && (
+                       <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-950/60 border border-amber-800/80 px-1.5 py-0.5 rounded">
+                         Active Module: Grease Filters
+                       </span>
+                     )}
+                   </div>
                    <ul className="text-[9px] text-slate-400 space-y-1.5 list-disc list-inside">
+                     <li className="text-amber-300 font-semibold">Duct velocity min 500 FPM (2.54 m/s) per IMC to prevent grease deposition.</li>
+                     <li>Type I commercial hood grease filters: UL 1046 / NFPA 96 listed baffle filters required.</li>
                      {muaInternal > 10 && <li className="text-amber-400">High internal MUA (&gt;10%) may interfere with thermal plume capture.</li>}
                      {totalMuaRatio < 80 && <li className="text-amber-400">Low total MUA may cause negative building pressure.</li>}
                      {faceVelocity < (isMetric ? 0.25 : 50) && <li className="text-amber-400">Low face velocity may result in poor spill containment.</li>}
-                     <li>Duct velocity min 500 FPM (2.54 m/s) per IMC to prevent grease accumulation.</li>
                    </ul>
                 </div>
               </div>
