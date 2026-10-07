@@ -641,7 +641,7 @@ export default function Ashrae621VentilationCalc({
                 </span>
               </div>
               <span className="text-[10px] font-mono opacity-80">
-                {isPass ? 'ASHRAE 62.1 Certified' : 'Review Parameters'}
+                {isPass ? 'VRP Requirements Met' : 'Review Parameters'}
               </span>
             </div>
 
@@ -798,7 +798,9 @@ export default function Ashrae621VentilationCalc({
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">Authority</span>
-                <span className="text-emerald-400 font-bold">Authoritative Production</span>
+                <span className={engineResult?.isAuthoritative ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                  {engineResult?.isAuthoritative ? 'Verified Production' : 'Preliminary / Diagnostic'}
+                </span>
               </div>
             </div>
 
@@ -863,10 +865,17 @@ export default function Ashrae621VentilationCalc({
                   {isMetric ? 'L/s' : 'cfm'}
                 </span>
               </div>
-              <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Authoritative Production Calculation</span>
-              </div>
+              {isPass && engineResult?.isAuthoritative ? (
+                <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Verified Production Calculation (PASS)</span>
+                </div>
+              ) : (
+                <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Preliminary / Non-Verified Calculation</span>
+                </div>
+              )}
             </div>
 
             {/* Key Metrics Row */}

@@ -52,16 +52,16 @@ export default function VentilationCalc({
   const getActiveBaseline = () => {
     switch (currentMode) {
       case 'exhaust':
-        return 'ASHRAE 62.1-2022 + Addendum x [AUTHORITATIVE PRODUCTION CALCULATION - PRESCRIPTIVE EXHAUST]';
+        return 'ASHRAE 62.1-2022 + Addendum x [PRESCRIPTIVE EXHAUST CALCULATION - TABLE 6-2]';
       case 'balance':
         return 'Volumetric Air-Balance Diagnostic Utility [NON-AUTHORITATIVE DIAGNOSTIC]';
       case 'heat_recovery':
         return 'Fan & Duct Aerodynamic Performance / Heat Recovery Estimator [NON-AUTHORITATIVE DIAGNOSTIC]';
       case 'reports':
-        return 'ASHRAE 62.1-2022 Ventilation Compliance Report & Audit Trail';
+        return 'ASHRAE 62.1-2022 Ventilation Submittal Documentation & Audit Trail';
       case 'calculation':
       default:
-        return 'ASHRAE 62.1-2022 + Addendum j [AUTHORITATIVE PRODUCTION CALCULATION]';
+        return 'ASHRAE 62.1-2022 + Addendum j [VENTILATION RATE PROCEDURE]';
     }
   };
 

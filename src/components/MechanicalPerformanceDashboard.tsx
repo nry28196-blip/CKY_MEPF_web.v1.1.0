@@ -410,7 +410,7 @@ export default function MechanicalPerformanceDashboard({
           <span className="text-lg font-bold font-mono text-white tracking-tight">
             {systemInfo.kpi1Value}
           </span>
-          <span className="text-[10px] text-cyan-400 font-mono block">Authoritative sizing basis</span>
+          <span className="text-[10px] text-cyan-400 font-mono block">Engineering sizing basis</span>
         </div>
 
         <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl space-y-0.5">

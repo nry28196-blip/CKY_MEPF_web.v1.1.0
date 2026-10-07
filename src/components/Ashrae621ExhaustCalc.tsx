@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useUnit } from '../lib/UnitContext';
 import { StandardDataProvider } from '../data/ventilation/StandardDataProvider';
 import { Ashrae621ExhaustService, ExhaustOperationMode } from '../calculations/ventilation/Ashrae621ExhaustService';
@@ -17,7 +17,12 @@ interface ExhaustRow {
   parkingGarageOpenSides50PercentOrMore?: boolean;
 }
 
-export default function Ashrae621ExhaustCalc({ edition = '2022' }: { edition?: string }) {
+interface Ashrae621ExhaustCalcProps {
+  edition?: string;
+  onStatusChange?: (status: EngineeringStatus) => void;
+}
+
+export default function Ashrae621ExhaustCalc({ edition = '2022', onStatusChange }: Ashrae621ExhaustCalcProps) {
   const { unitSystem } = useUnit();
   const exhaustRates = StandardDataProvider.get621ExhaustRates(edition);
   const isMetric = unitSystem === 'metric';
@@ -85,11 +90,16 @@ export default function Ashrae621ExhaustCalc({ edition = '2022' }: { edition?: s
   }, [rows, isMetric, exhaustRates, edition, complianceProcedure]);
 
   const headerStatus: EngineeringStatus =
+    complianceProcedure === 'performance' ? 'BLOCKED' :
     results.status === 'PASS' ? 'PASS' :
     results.status === 'FAIL' ? 'FAIL' :
-    results.status === 'BLOCKED' ? 'NOT_VERIFIED' :
+    results.status === 'BLOCKED' ? 'BLOCKED' :
     results.status === 'INCOMPLETE' ? 'INCOMPLETE' :
     results.status === 'NOT_VERIFIED' ? 'NOT_VERIFIED' : 'NOT_READY_FOR_ENGINEERING_USE';
+
+  useEffect(() => {
+    onStatusChange?.(headerStatus);
+  }, [headerStatus, onStatusChange]);
 
   const headerMessage = complianceProcedure === 'performance'
     ? 'ASHRAE 62.1 Section 6.5.2 Performance Compliance Path (Status: PERFORMANCE_PATH_UNIMPLEMENTED) - Independent evaluation required'

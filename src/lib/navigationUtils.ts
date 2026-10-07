@@ -1,5 +1,5 @@
 /**
- * Navigation utility functions and authoritative metadata for Mechanical / HVAC
+ * Navigation utility functions and standardized metadata for Mechanical / HVAC
  * systems, subordinates, and modules.
  */
 
@@ -79,7 +79,7 @@ export const MECHANICAL_MODULE_METADATA: Record<string, Record<string, ModuleMet
 };
 
 /**
- * Authoritative module definitions for each subordinate system across MEP disciplines.
+ * Module definitions for each subordinate system across MEP disciplines.
  */
 export const SUB_SYSTEM_MODULES: Record<string, SubSystemModuleItem[]> = {
   cooling: [

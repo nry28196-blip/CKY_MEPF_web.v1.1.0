@@ -21,8 +21,10 @@ export default function VentilationReportsView({
   const { unitSystem } = useUnit();
   const isMetric = unitSystem === 'metric';
 
-  const status = engineResult?.status || 'PASS';
-  const finalAirflow = engineResult?.finalDesignOutdoorAir ?? 42.5;
+  const status = engineResult?.status || 'INCOMPLETE';
+  const finalAirflow = typeof engineResult?.finalDesignOutdoorAir === 'number'
+    ? engineResult.finalDesignOutdoorAir
+    : null;
 
   return (
     <div id="ventilation-report-document" className="space-y-6">
@@ -32,13 +34,13 @@ export default function VentilationReportsView({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-mono uppercase tracking-widest text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-2.5 py-0.5 rounded">
-                Official Engineering Document
+                Ventilation Submittal Report
               </span>
               <span className="text-xs text-slate-500 font-mono">Doc ID: CKY-MEPF-VENT-62.1</span>
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
               <FileText className="w-5 h-5 text-cyan-400" />
-              ASHRAE 62.1-2022 Ventilation Compliance Report
+              ASHRAE 62.1-2022 Ventilation Calculation Report
             </h2>
             <p className="text-xs text-slate-400 mt-1">
               Ventilation Rate Procedure (VRP) calculation trace, atmospheric density corrections, and engineering audit verification.
@@ -73,9 +75,11 @@ export default function VentilationReportsView({
 
           <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80">
             <span className="text-[10px] text-slate-500 uppercase block">Engine Authority</span>
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+            <span className={`font-bold flex items-center gap-1.5 ${
+              status === 'PASS' && engineResult?.isAuthoritative ? 'text-emerald-400' : 'text-amber-400'
+            }`}>
               <ShieldCheck className="w-3.5 h-3.5" />
-              Authoritative Production
+              {status === 'PASS' && engineResult?.isAuthoritative ? 'Authoritative Production' : 'Preliminary / Pending Calculation'}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Section 6.2 VRP</span>
           </div>
@@ -86,15 +90,15 @@ export default function VentilationReportsView({
               status === 'PASS' ? 'text-emerald-400' : status === 'FAIL' ? 'text-red-400' : 'text-amber-400'
             }`}>
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {status === 'PASS' ? 'PASS (Compliant)' : status}
+              {status === 'PASS' ? 'PASS (Compliant)' : (status || 'INCOMPLETE')}
             </span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Verified Table 6-1</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Table 6-1 VRP</span>
           </div>
 
           <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80">
             <span className="text-[10px] text-slate-500 uppercase block">Total Required Outdoor Air</span>
             <span className="text-cyan-400 font-bold text-sm">
-              {typeof finalAirflow === 'number' ? finalAirflow.toFixed(1) : finalAirflow} {isMetric ? 'L/s' : 'cfm'}
+              {finalAirflow !== null ? `${finalAirflow.toFixed(1)} ${isMetric ? 'L/s' : 'cfm'}` : 'Not calculated'}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Corrected for Eρ</span>
           </div>

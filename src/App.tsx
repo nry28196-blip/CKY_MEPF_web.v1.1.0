@@ -26,6 +26,11 @@ import {
   Download,
   Ruler,
   CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ShieldAlert,
+  Construction,
+  Info,
   ChevronDown,
   ChevronRight,
   Save,
@@ -45,6 +50,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TabType, HistoryItem, ProjectContainer } from './types';
+import { EngineeringStatus } from './components/common/EngineeringStatusHeader';
 import MechanicalCalc from './components/MechanicalCalc';
 import ElectricalCalc from './components/ElectricalCalc';
 import PlumbingCalc from './components/PlumbingCalc';
@@ -161,6 +167,8 @@ export default function App() {
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState<boolean>(false);
   const [isBatchUnitModalOpen, setIsBatchUnitModalOpen] = useState<boolean>(false);
   const [lastCalculationResult, setLastCalculationResult] = useState<any>(null);
+  const [coolingResult, setCoolingResult] = useState<any>(null);
+  const [exhaustStatus, setExhaustStatus] = useState<EngineeringStatus | null>(null);
 
   useEffect(() => {
     try {
@@ -277,17 +285,54 @@ export default function App() {
   };
 
   const handleSaveCurrentCalculation = () => {
-    const finalAir = lastCalculationResult?.finalDesignOutdoorAir ?? 42.5;
+    let summary = 'Standard engineering execution';
+
+    if (activeTab === 'mechanical') {
+      const currentSub = activeSubordinates.mechanical;
+      const currentMod = getActiveMechModuleId(currentSub);
+
+      if (currentSub === 'ventilation') {
+        if (currentMod === 'calculation') {
+          const status = lastCalculationResult?.status;
+          const finalAir = lastCalculationResult?.finalDesignOutdoorAir;
+          const space = lastCalculationResult?.spaceType || lastCalculationResult?.zone?.spaceType?.name || 'Configured Space';
+
+          if (typeof finalAir === 'number' && status) {
+            summary = `Required OA: ${finalAir.toFixed(1)} L/s | Space: ${space} | ASHRAE 62.1-2022 ${status}`;
+          } else if (status) {
+            summary = `ASHRAE 62.1-2022 calculation status: ${status}`;
+          } else {
+            summary = 'Calculation result unavailable';
+          }
+        } else if (currentMod === 'exhaust') {
+          if (exhaustStatus) {
+            summary = `Exhaust Table 6-2 prescriptive status: ${exhaustStatus}`;
+          } else {
+            summary = 'Calculation result unavailable';
+          }
+        } else if (currentMod === 'balance') {
+          summary = 'Volumetric air balance diagnostic summary';
+        } else if (currentMod === 'reports') {
+          const status = lastCalculationResult?.status;
+          summary = status ? `Ventilation submittal report audit status: ${status}` : 'Calculation result unavailable';
+        }
+      } else if (currentSub === 'cooling') {
+        summary = coolingResult?.totalCoolingTons
+          ? `Cooling estimate: ${coolingResult.totalCoolingTons.toFixed(1)} Tons (Simplified model)`
+          : 'Cooling load estimate (Simplified model)';
+      } else {
+        summary = `${currentSub.toUpperCase()} calculation parameters saved`;
+      }
+    }
+
     addHistoryItem({
       tab: activeTab,
       subType: activeSubordinates[activeTab],
       title: activeTab === 'mechanical' && activeSubordinates.mechanical === 'ventilation'
         ? `ASHRAE 62.1 Ventilation (${ventilationSubMode.toUpperCase()})`
         : `${activeTab.toUpperCase()} Calculation`,
-      summary: activeTab === 'mechanical' && activeSubordinates.mechanical === 'ventilation'
-        ? `Required OA: ${finalAir} L/s | Space: Office | ASHRAE 62.1-2022 PASS`
-        : `Standard engineering execution`,
-      parameters: { activeTab, activeSubordinates, ventilationSubMode, lastCalculationResult }
+      summary,
+      parameters: { activeTab, activeSubordinates, ventilationSubMode, lastCalculationResult, exhaustStatus, coolingResult }
     });
   };
 
@@ -451,7 +496,7 @@ export default function App() {
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
       badge: 'ASHRAE 62.1',
-      description: 'Outdoor airflow rates Vbz, Ez, Voz per ASHRAE 62.1-2022',
+      description: 'Outdoor airflow rates Vbz, Ez, Voz per ASHRAE 62.1-2022 Ventilation Rate Procedure',
       keywords: ['ashrae', '62.1', 'ventilation', 'outdoor air', 'fresh air', 'vbz', 'voz', 'ez', 'density']
     },
     {
@@ -462,9 +507,9 @@ export default function App() {
       ventSubMode: 'exhaust',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Table 6-5',
-      description: 'Restroom, kitchen, parking, and laboratory exhaust airflow rates',
-      keywords: ['exhaust', 'table 6-5', 'restroom', 'toilet', 'parking', 'kitchen exhaust', 'extraction']
+      badge: 'Prescriptive 6.5.1',
+      description: 'Prescriptive exhaust airflow sizing per ASHRAE 62.1 Table 6-2 (Performance path unverified)',
+      keywords: ['exhaust', 'table 6-2', 'restroom', 'toilet', 'parking', 'kitchen exhaust', 'extraction']
     },
     {
       id: 'mech-vent-balance',
@@ -474,8 +519,8 @@ export default function App() {
       ventSubMode: 'balance',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Air Balance',
-      description: 'Supply vs exhaust differential and building zone pressure',
+      badge: 'Diagnostic Only',
+      description: 'Diagnostic airflow balance and building zone pressurization evaluation (Non-authoritative)',
       keywords: ['balance', 'air balance', 'pressure', 'pressurization', 'differential', 'supply', 'exhaust']
     },
     {
@@ -485,8 +530,8 @@ export default function App() {
       subId: 'heatRecovery',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'HRV / ERV',
-      description: 'Sensible and latent energy recovery efficiency for ventilation air',
+      badge: 'Not Yet Implemented',
+      description: 'Not Yet Implemented: Planned HRV/ERV heat recovery performance models per AHRI 1060',
       keywords: ['hrv', 'erv', 'heat recovery', 'energy recovery', 'efficiency', 'enthalpy']
     },
     {
@@ -498,7 +543,7 @@ export default function App() {
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
       badge: 'Reports',
-      description: 'Compliance submittal summaries and airflow schedules',
+      description: 'ASHRAE 62.1 calculation documentation and schedule reports (Reflects calculation audit state)',
       keywords: ['reports', 'schedules', 'submittals', 'pdf', 'export', 'compliance']
     },
     {
@@ -508,8 +553,8 @@ export default function App() {
       subId: 'cooling',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Cooling',
-      description: 'Sensible/latent heat gains, chiller, and VRF system sizing',
+      badge: 'Simplified Model',
+      description: 'Simplified cooling load estimate model (Preliminary, not ready for authoritative engineering use)',
       keywords: ['cooling', 'load', 'sensible', 'latent', 'chiller', 'vrf', 'tons', 'btu', 'heat gain']
     },
     {
@@ -519,8 +564,8 @@ export default function App() {
       subId: 'psychrometrics',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Psychrometrics',
-      description: 'Air properties, wet bulb, dew point, enthalpy, and humidity',
+      badge: 'Reference Library',
+      description: 'Psychrometric formulas & reference library (State analysis calculators under specification)',
       keywords: ['psychrometric', 'psychrometrics', 'dew point', 'wet bulb', 'enthalpy', 'humidity']
     },
     {
@@ -530,8 +575,8 @@ export default function App() {
       subId: 'ductSizing',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Equal Friction',
-      description: 'Duct dimensions, velocity limits, and pressure drop calculation',
+      badge: 'Calculation Utility',
+      description: 'Equal friction duct sizing utility, fitting loss database, and static pressure diagnostic aid',
       keywords: ['duct', 'duct sizing', 'friction', 'velocity', 'static pressure', 'air distribution']
     },
     {
@@ -541,8 +586,8 @@ export default function App() {
       subId: 'fanDuty',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'Fan Duty',
-      description: 'External static pressure, total fan pressure, power, and RPM',
+      badge: 'Calculation Aid',
+      description: 'Total external static pressure (TSP) calculation aid (Fan curves and motor selection not yet implemented)',
       keywords: ['fan', 'fan selection', 'fan duty', 'static pressure', 'esp', 'bhp', 'blower']
     },
     {
@@ -552,8 +597,8 @@ export default function App() {
       subId: 'kitchenHood',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'NFPA 96',
-      description: 'Type I and Type II kitchen hood capture velocities and exhaust rates',
+      badge: 'Diagnostic Only',
+      description: 'Diagnostic estimation utility for kitchen hood capture velocity, grease filters, and make-up air',
       keywords: ['kitchen', 'kitchen hood', 'hood', 'culinary', 'grease', 'nfpa 96', 'type 1']
     },
     {
@@ -563,8 +608,8 @@ export default function App() {
       subId: 'heatRecovery',
       systemLabel: 'Mechanical / HVAC',
       systemIcon: Wind,
-      badge: 'COP / EER',
-      description: 'Thermal energy loop efficiency and seasonal energy savings',
+      badge: 'Not Yet Implemented',
+      description: 'Not Yet Implemented: Planned HRV/ERV heat recovery performance models per AHRI 1060',
       keywords: ['heat recovery', 'thermal', 'energy recovery', 'cop', 'eer']
     },
 
@@ -897,17 +942,17 @@ export default function App() {
         switch (mod) {
           case 'vrf': return 'Optimize multi-zone VRF systems, refrigerant piping distribution, and outdoor unit sizing';
           case 'schedules': return 'Engineering schedules for indoor fan coils, cassettes, and outdoor condensing units';
-          case 'reports': return 'Authoritative ASHRAE & AHRI 1230 compliance documentation and mathematical audit trail';
+          case 'reports': return 'Cooling load estimate and VRF engineering submittal documentation';
           case 'estimate':
           default:
-            return 'Configure thermal loads for standard rooms with ASHRAE heat balance equations';
+            return 'Simplified cooling load estimate based on standard space parameters';
         }
       }
       if (currentSub === 'ventilation') {
         switch (mod) {
-          case 'exhaust': return 'Prescriptive exhaust airflow sizing compliant with ASHRAE 62.1 Table 6-5 & 6-6';
-          case 'balance': return 'Building air pressurization balance, envelope infiltration, and net airflow distribution';
-          case 'reports': return 'Authoritative ASHRAE 62.1-2022 compliance documentation and mathematical audit trail';
+          case 'exhaust': return 'Prescriptive exhaust airflow sizing per ASHRAE 62.1-2022 Table 6-2';
+          case 'balance': return 'Diagnostic airflow balance and building pressure evaluation';
+          case 'reports': return 'Ventilation submittal documentation, schedules, and mathematical audit trail';
           case 'calculation':
           default:
             return 'Calculate required outdoor air ventilation rates per ASHRAE 62.1-2022';
@@ -917,10 +962,10 @@ export default function App() {
         const mod = mechanicalModules.psychrometrics || 'properties';
         switch (mod) {
           case 'references': return 'Grounded mathematical formulas and unit conversions from ASHRAE Fundamentals Chapter 1';
-          case 'comfort': return 'Enthalpy states, sensible/latent heat ratios, and psychrometric process lines';
+          case 'comfort': return 'Thermodynamics & moist air enthalpy — Not Yet Implemented (Under Specification)';
           case 'properties':
           default:
-            return 'Moist air state properties: dry bulb, wet bulb, dew point, relative humidity, and humidity ratio';
+            return 'Psychrometric state property calculation — Not Yet Implemented (Under Specification)';
         }
       }
       if (currentSub === 'ductSizing') {
@@ -928,7 +973,7 @@ export default function App() {
         switch (mod) {
           case 'critical_path': return 'Identify the index run with highest cumulative resistance across parallel duct paths';
           case 'fittings': return 'Loss coefficients (Co) and dynamic velocity pressure drop per ASHRAE Fitting Database';
-          case 'static_regain': return 'Velocity conversion to static pressure for balanced terminal takeoffs';
+          case 'static_regain': return 'Static regain duct sizing method — Not Yet Implemented (Under Specification)';
           case 'equal_friction':
           default:
             return 'Air distribution sizing using Equal Friction and SMACNA standard guidelines';
@@ -937,9 +982,9 @@ export default function App() {
       if (currentSub === 'fanDuty') {
         const mod = mechanicalModules.fanDuty || 'pressure';
         switch (mod) {
-          case 'fan_curve': return 'System resistance curve overlay against manufacturer aerodynamic fan curve';
-          case 'selection': return 'Shaft brake horsepower (BHP), drive loss, and electrical motor frame size';
-          case 'reports': return 'Submittal documentation with fan duty points, RPM, sound power levels, and electrical specs';
+          case 'fan_curve': return 'Fan performance curve and operating point — Not Yet Implemented (Under Specification)';
+          case 'selection': return 'Fan motor selection and electrical BHP — Not Yet Implemented (Under Specification)';
+          case 'reports': return 'Fan submittal schedule report — Not Yet Implemented (Under Specification)';
           case 'pressure':
           default:
             return 'Total external static pressure, duct fittings loss, and critical path analysis';
@@ -948,26 +993,371 @@ export default function App() {
       if (currentSub === 'kitchenHood') {
         const mod = mechanicalModules.kitchenHood || 'capture';
         switch (mod) {
-          case 'grease': return 'UL 1046 listed baffle filter specifications, extraction efficiency, and IMC 500 FPM minimum grease duct velocity';
-          case 'mua': return 'Dedicated make-up air percentage balance: transfer, ceiling diffusers, and perimeter supply';
+          case 'grease': return 'Engineering Diagnostic Utility: UL 1046 baffle filter extraction and grease velocity check';
+          case 'mua': return 'Engineering Diagnostic Utility: Make-up air percentage balance estimation';
           case 'capture':
           default:
-            return 'Thermal plume capture airflow, cooking equipment duty, and hood geometry sizing';
+            return 'Engineering Diagnostic Utility: Commercial kitchen exhaust estimation per IMC 507 / ASHRAE 154';
         }
       }
       if (currentSub === 'heatRecovery') {
         const mod = mechanicalModules.heatRecovery || 'hrv_sizing';
         switch (mod) {
-          case 'aerodynamics': return 'Matrix pressure loss, face velocity, and supply/exhaust fan static balancing';
-          case 'efficiency': return 'Sensible recovery effectiveness (SRE) and total energy recovery effectiveness (TRE) per AHRI 1060';
-          case 'reports': return 'Seasonal energy savings, peak coil load reduction, and ASHRAE 90.1 compliance submittals';
+          case 'aerodynamics': return 'Heat recovery aerodynamic performance — Not Yet Implemented (Under Specification)';
+          case 'efficiency': return 'Thermal & latent energy effectiveness — Not Yet Implemented (Under Specification)';
+          case 'reports': return 'Heat recovery energy audit report — Not Yet Implemented (Under Specification)';
           case 'hrv_sizing':
           default:
-            return 'Plate heat exchanger (HRV) and enthalpy wheel (ERV) ventilation recovery sizing';
+            return 'HRV / ERV heat recovery sizing — Not Yet Implemented (Under Specification)';
         }
       }
     }
     return 'Professional MEP engineering calculations compliant with international codes';
+  };
+
+  // Header Engineering Status type reflecting visual hierarchy
+  type HeaderEngineeringStatus =
+    | 'PASS'
+    | 'FAIL'
+    | 'INCOMPLETE'
+    | 'BLOCKED'
+    | 'NOT_VERIFIED'
+    | 'NOT_READY_FOR_ENGINEERING_USE'
+    | 'NOT_YET_IMPLEMENTED'
+    | 'NEUTRAL'
+    | 'READY';
+
+  // Dynamic header engineering status derived honestly from active module state
+  const getHeaderStatusInfo = (): {
+    status: HeaderEngineeringStatus;
+    label: string;
+    message?: string;
+  } => {
+    if (activeTab !== 'mechanical') {
+      return {
+        status: 'NEUTRAL',
+        label: 'ENGINEERING MODULE',
+        message: 'Active engineering calculation module'
+      };
+    }
+
+    const currentSub = activeSubordinates.mechanical;
+    const currentModId = getActiveMechModuleId(currentSub);
+
+    // 1. Ventilation Subordinates
+    if (currentSub === 'ventilation') {
+      if (currentModId === 'calculation') {
+        const engineStatus = lastCalculationResult?.status;
+        if (engineStatus === 'PASS') {
+          return {
+            status: 'PASS',
+            label: 'PASS',
+            message: 'All ASHRAE 62.1-2022 ventilation requirements verified'
+          };
+        }
+        if (engineStatus === 'FAIL') {
+          return {
+            status: 'FAIL',
+            label: 'FAIL',
+            message: 'Ventilation requirements not met — Check zone parameters'
+          };
+        }
+        if (engineStatus === 'BLOCKED') {
+          return {
+            status: 'BLOCKED',
+            label: 'BLOCKED',
+            message: 'Calculation blocked — Invalid or non-physical parameters'
+          };
+        }
+        if (engineStatus === 'INCOMPLETE') {
+          return {
+            status: 'INCOMPLETE',
+            label: 'INCOMPLETE',
+            message: 'Incomplete parameters — Missing required inputs'
+          };
+        }
+        if (engineStatus === 'NOT_VERIFIED') {
+          return {
+            status: 'NOT_VERIFIED',
+            label: 'NOT VERIFIED',
+            message: 'Parameters not verified against ASHRAE 62.1 tables'
+          };
+        }
+        return {
+          status: 'NEUTRAL',
+          label: 'NEUTRAL',
+          message: 'ASHRAE 62.1-2022 calculation pending execution'
+        };
+      }
+
+      if (currentModId === 'exhaust') {
+        if (exhaustStatus === 'PASS') {
+          return {
+            status: 'PASS',
+            label: 'PASS',
+            message: 'Prescriptive exhaust requirements met per Table 6-2'
+          };
+        }
+        if (exhaustStatus === 'FAIL') {
+          return {
+            status: 'FAIL',
+            label: 'FAIL',
+            message: 'Prescriptive exhaust requirements failed per Table 6-2'
+          };
+        }
+        if (exhaustStatus === 'BLOCKED') {
+          return {
+            status: 'BLOCKED',
+            label: 'BLOCKED',
+            message: 'Section 6.5.2 Performance compliance path unimplemented / blocked'
+          };
+        }
+        if (exhaustStatus === 'NOT_VERIFIED') {
+          return {
+            status: 'NOT_VERIFIED',
+            label: 'NOT VERIFIED',
+            message: 'Exhaust parameters not verified against Table 6-2'
+          };
+        }
+        if (exhaustStatus === 'INCOMPLETE') {
+          return {
+            status: 'INCOMPLETE',
+            label: 'INCOMPLETE',
+            message: 'Incomplete exhaust inputs'
+          };
+        }
+        if (exhaustStatus === 'NOT_READY_FOR_ENGINEERING_USE') {
+          return {
+            status: 'NOT_READY_FOR_ENGINEERING_USE',
+            label: 'NOT READY',
+            message: 'Exhaust calculation parameters require engineering review'
+          };
+        }
+        return {
+          status: 'NEUTRAL',
+          label: 'NEUTRAL',
+          message: 'ASHRAE 62.1 prescriptive exhaust calculation active'
+        };
+      }
+
+      if (currentModId === 'balance') {
+        return {
+          status: 'NOT_READY_FOR_ENGINEERING_USE',
+          label: 'DIAGNOSTIC ONLY',
+          message: 'Diagnostic airflow balance — Non-authoritative diagnostic utility'
+        };
+      }
+
+      if (currentModId === 'reports') {
+        const engineStatus = lastCalculationResult?.status;
+        if (engineStatus === 'PASS') {
+          return {
+            status: 'PASS',
+            label: 'PASS',
+            message: 'ASHRAE 62.1 compliance documentation verified'
+          };
+        }
+        if (engineStatus === 'FAIL') {
+          return {
+            status: 'FAIL',
+            label: 'FAIL',
+            message: 'Compliance audit indicates non-conformance'
+          };
+        }
+        if (engineStatus === 'BLOCKED') {
+          return {
+            status: 'BLOCKED',
+            label: 'BLOCKED',
+            message: 'Calculation blocked — Report unavailable'
+          };
+        }
+        if (engineStatus === 'INCOMPLETE') {
+          return {
+            status: 'INCOMPLETE',
+            label: 'INCOMPLETE',
+            message: 'Incomplete calculation — Parameters missing'
+          };
+        }
+        return {
+          status: 'NEUTRAL',
+          label: 'AWAITING CALCULATION',
+          message: 'Perform ventilation calculation before generating submittal report'
+        };
+      }
+    }
+
+    // 2. Cooling Load
+    if (currentSub === 'cooling') {
+      if (coolingResult?.status === 'INCOMPLETE') {
+        return {
+          status: 'INCOMPLETE',
+          label: 'INCOMPLETE',
+          message: coolingResult?.warning || 'Missing required parameters'
+        };
+      }
+      return {
+        status: 'NOT_READY_FOR_ENGINEERING_USE',
+        label: 'SIMPLIFIED MODEL',
+        message: 'Simplified cooling load estimate — Does not replace full ASHRAE heat balance calculation'
+      };
+    }
+
+    // 3. Psychrometrics
+    if (currentSub === 'psychrometrics') {
+      if (currentModId === 'references') {
+        return {
+          status: 'READY',
+          label: 'REFERENCE LIBRARY',
+          message: 'ASHRAE Fundamentals Chapter 1 psychrometric equations and tables'
+        };
+      }
+      return {
+        status: 'NOT_YET_IMPLEMENTED',
+        label: 'NOT YET IMPLEMENTED',
+        message: 'Psychrometric module under specification per ASHRAE Fundamentals Chapter 1'
+      };
+    }
+
+    // 4. Duct Design
+    if (currentSub === 'ductSizing') {
+      if (currentModId === 'equal_friction') {
+        return {
+          status: 'NOT_READY_FOR_ENGINEERING_USE',
+          label: 'CALCULATION UTILITY',
+          message: 'Equal friction duct sizing utility — Preliminary sizing'
+        };
+      }
+      if (currentModId === 'critical_path') {
+        return {
+          status: 'NOT_READY_FOR_ENGINEERING_USE',
+          label: 'CALCULATION AID',
+          message: 'Darcy-Weisbach critical path pressure loss diagnostic aid'
+        };
+      }
+      if (currentModId === 'fittings') {
+        return {
+          status: 'READY',
+          label: 'REFERENCE LIBRARY',
+          message: 'ASHRAE Duct Fitting Database (DFDB) reference loss coefficients'
+        };
+      }
+      if (currentModId === 'static_regain') {
+        return {
+          status: 'NOT_YET_IMPLEMENTED',
+          label: 'NOT YET IMPLEMENTED',
+          message: 'Static regain method under formal specification'
+        };
+      }
+    }
+
+    // 5. Fan Selection
+    if (currentSub === 'fanDuty') {
+      if (currentModId === 'pressure') {
+        return {
+          status: 'NOT_READY_FOR_ENGINEERING_USE',
+          label: 'CALCULATION AID',
+          message: 'Total external static pressure (TSP) calculation aid'
+        };
+      }
+      return {
+        status: 'NOT_YET_IMPLEMENTED',
+        label: 'NOT YET IMPLEMENTED',
+        message: 'Fan selection module under formal specification'
+      };
+    }
+
+    // 6. Kitchen Hood
+    if (currentSub === 'kitchenHood') {
+      return {
+        status: 'NOT_READY_FOR_ENGINEERING_USE',
+        label: 'DIAGNOSTIC ONLY',
+        message: 'Commercial kitchen exhaust estimation based on IMC 507 / ASHRAE 154 guidelines'
+      };
+    }
+
+    // 7. Heat Recovery
+    if (currentSub === 'heatRecovery') {
+      return {
+        status: 'NOT_YET_IMPLEMENTED',
+        label: 'NOT YET IMPLEMENTED',
+        message: 'HRV / ERV heat recovery modeling under formal specification'
+      };
+    }
+
+    return {
+      status: 'NEUTRAL',
+      label: 'ENGINEERING MODULE',
+      message: 'Active engineering module'
+    };
+  };
+
+  const getStatusBadgeConfig = (status: HeaderEngineeringStatus) => {
+    switch (status) {
+      case 'PASS':
+        return {
+          bg: 'bg-emerald-950/60 border-emerald-700/80',
+          text: 'text-emerald-300',
+          icon: CheckCircle2,
+          iconColor: 'text-emerald-400'
+        };
+      case 'FAIL':
+        return {
+          bg: 'bg-red-950/60 border-red-700/80',
+          text: 'text-red-300',
+          icon: XCircle,
+          iconColor: 'text-red-400'
+        };
+      case 'BLOCKED':
+        return {
+          bg: 'bg-rose-950/60 border-rose-700/80',
+          text: 'text-rose-300',
+          icon: ShieldAlert,
+          iconColor: 'text-rose-400'
+        };
+      case 'NOT_VERIFIED':
+        return {
+          bg: 'bg-fuchsia-950/60 border-fuchsia-700/80',
+          text: 'text-fuchsia-300',
+          icon: AlertTriangle,
+          iconColor: 'text-fuchsia-400'
+        };
+      case 'NOT_READY_FOR_ENGINEERING_USE':
+        return {
+          bg: 'bg-amber-950/50 border-amber-700/70',
+          text: 'text-amber-300',
+          icon: AlertTriangle,
+          iconColor: 'text-amber-400'
+        };
+      case 'NOT_YET_IMPLEMENTED':
+        return {
+          bg: 'bg-amber-950/40 border-amber-800/60',
+          text: 'text-amber-300',
+          icon: Construction,
+          iconColor: 'text-amber-400'
+        };
+      case 'INCOMPLETE':
+        return {
+          bg: 'bg-amber-950/50 border-amber-700/70',
+          text: 'text-amber-300',
+          icon: Clock,
+          iconColor: 'text-amber-400'
+        };
+      case 'READY':
+        return {
+          bg: 'bg-sky-950/50 border-sky-700/70',
+          text: 'text-sky-300',
+          icon: Info,
+          iconColor: 'text-sky-400'
+        };
+      case 'NEUTRAL':
+      default:
+        return {
+          bg: 'bg-slate-900 border-slate-700',
+          text: 'text-slate-300',
+          icon: Layers,
+          iconColor: 'text-slate-400'
+        };
+    }
   };
 
   // Main Calculation View Rendering
@@ -986,7 +1376,10 @@ export default function App() {
               setMechanicalModules(prev => ({ ...prev, cooling: mode }));
               scrollWorkspaceToTop();
             }}
-            onCalculationChange={setLastCalculationResult}
+            onCalculationChange={(res: any) => {
+              setCoolingResult(res);
+              setLastCalculationResult(res);
+            }}
           />
         );
       }
@@ -995,12 +1388,14 @@ export default function App() {
           case 'calculation':
             return (
               <Ashrae621VentilationCalc
-                onVentilationChange={(flow, details) => setLastCalculationResult(details)}
+                onVentilationChange={(flow, details) => {
+                  setLastCalculationResult(details);
+                }}
                 edition="2022"
               />
             );
           case 'exhaust':
-            return <Ashrae621ExhaustCalc />;
+            return <Ashrae621ExhaustCalc onStatusChange={setExhaustStatus} />;
           case 'balance':
             return <AirBalanceCalc />;
           case 'reports':
@@ -1659,13 +2054,23 @@ export default function App() {
               {/* Right: Engineering Status & Action Buttons */}
               <div className="flex flex-wrap items-center gap-2.5">
                 
-                {/* Prominent Engineering Status Badge */}
-                <div className="flex items-center gap-2 bg-emerald-950/60 border border-emerald-800/80 px-3 py-1.5 rounded-lg shadow-sm">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-xs font-mono font-bold text-emerald-300">
-                    Calculation Ready
-                  </span>
-                </div>
+                {/* Dynamic Engineering Status Badge with smooth 200ms transition */}
+                {(() => {
+                  const headerStatusInfo = getHeaderStatusInfo();
+                  const badgeConfig = getStatusBadgeConfig(headerStatusInfo.status);
+                  const StatusIcon = badgeConfig.icon;
+                  return (
+                    <div
+                      className={`flex items-center gap-2 border px-3 py-1.5 rounded-lg shadow-sm transition-all duration-200 ${badgeConfig.bg}`}
+                      title={headerStatusInfo.message}
+                    >
+                      <StatusIcon className={`w-4 h-4 shrink-0 transition-colors duration-200 ${badgeConfig.iconColor}`} />
+                      <span className={`text-xs font-mono font-bold tracking-wider transition-colors duration-200 ${badgeConfig.text}`}>
+                        {headerStatusInfo.label}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Save Button */}
                 <button
@@ -1769,7 +2174,11 @@ export default function App() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase hidden md:inline">Current Module:</span>
                 <span className="text-xs font-mono font-bold text-cyan-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                   {activeTab === 'mechanical'
-                    ? (getSubSystems().find(m => m.id === getActiveMechModuleId(activeSubordinates.mechanical))?.label || 'MODULE').toUpperCase()
+                    ? (
+                        MECHANICAL_MODULE_METADATA[activeSubordinates.mechanical]?.[getActiveMechModuleId(activeSubordinates.mechanical)]?.label ||
+                        getSubSystems().find(m => m.id === getActiveMechModuleId(activeSubordinates.mechanical))?.label ||
+                        'MODULE'
+                      ).toUpperCase()
                     : (activeSubordinates[activeTab] || 'MAIN').toUpperCase()}
                 </span>
               </div>

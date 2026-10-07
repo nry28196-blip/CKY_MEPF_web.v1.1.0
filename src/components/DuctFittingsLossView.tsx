@@ -78,7 +78,7 @@ export default function DuctFittingsLossView() {
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in font-sans">
       <EngineeringStatusHeader
         status="READY"
-        message="Authoritative ASHRAE Fitting Database: Loss coefficients (Co) per ASHRAE Duct Fitting Database (DFDB) and ASHRAE Fundamentals Chapter 21."
+        message="ASHRAE Fitting Reference Database: Loss coefficients (Co) per ASHRAE Duct Fitting Database (DFDB) and ASHRAE Fundamentals Chapter 21."
       />
 
       {/* Control Panel: Operating Velocity & Air Density */}
