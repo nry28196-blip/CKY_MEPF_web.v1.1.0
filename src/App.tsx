@@ -2187,13 +2187,14 @@ export default function App() {
         </div>
 
         {/* ============================================================ */}
-        {/* C. CALCULATION WORKSPACE (SECTION 7 - THREE COLUMN LAYOUT)   */}
+        {/* C. CALCULATION WORKSPACE (RESPONSIVE GRID LAYOUT)            */}
+        {/* Prioritizes tabular output on smaller screens with stacking  */}
         {/* ============================================================ */}
         <div
           ref={workspaceRef}
           id="calculation-workspace"
           role="main"
-          className="flex-1 overflow-y-auto p-5 sm:p-6 lg:p-8 max-w-[1700px] w-full mx-auto transition-all"
+          className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-8 max-w-[1700px] w-full mx-auto transition-all grid grid-cols-1 gap-6 auto-rows-max"
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -2204,6 +2205,7 @@ export default function App() {
               transition={{ duration: 0.22, ease: 'easeOut' }}
               onAnimationStart={scrollWorkspaceToTop}
               onAnimationComplete={scrollWorkspaceToTop}
+              className="w-full"
             >
               {renderCalculationArea()}
             </motion.div>

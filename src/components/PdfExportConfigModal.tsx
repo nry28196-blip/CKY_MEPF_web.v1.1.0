@@ -134,7 +134,7 @@ export const PDF_EXPORT_SECTIONS: PdfSectionOption[] = [
   {
     key: 'disclaimer',
     label: 'Engineering QA Notice & Disclaimer',
-    description: 'Professional engineer certification & AHJ compliance notice',
+    description: 'Engineering calculation scope, limitations, and AHJ submittal notice',
     category: 'documentation',
     defaultEnabled: true,
     icon: Info

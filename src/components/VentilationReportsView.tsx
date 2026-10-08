@@ -22,6 +22,14 @@ export default function VentilationReportsView({
   const isMetric = unitSystem === 'metric';
 
   const status = engineResult?.status || 'INCOMPLETE';
+  const isAuthoritative = Boolean(engineResult?.isAuthoritative);
+  const isPass = status === 'PASS';
+  const hasCompliance = Boolean(
+    engineResult?.complianceSummary?.includes('COMPLIANT') ||
+    engineResult?.auditTrail?.some((t: any) => t?.complianceSummary?.includes('COMPLIANT')) ||
+    (isPass && isAuthoritative)
+  );
+
   const finalAirflow = typeof engineResult?.finalDesignOutdoorAir === 'number'
     ? engineResult.finalDesignOutdoorAir
     : null;
@@ -76,10 +84,14 @@ export default function VentilationReportsView({
           <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80">
             <span className="text-[10px] text-slate-500 uppercase block">Engine Authority</span>
             <span className={`font-bold flex items-center gap-1.5 ${
-              status === 'PASS' && engineResult?.isAuthoritative ? 'text-emerald-400' : 'text-amber-400'
+              isPass && isAuthoritative ? 'text-emerald-400' : 'text-amber-400'
             }`}>
               <ShieldCheck className="w-3.5 h-3.5" />
-              {status === 'PASS' && engineResult?.isAuthoritative ? 'Authoritative Production' : 'Preliminary / Pending Calculation'}
+              {isPass && isAuthoritative
+                ? 'Authoritative Production'
+                : isPass
+                  ? 'Authority Not Verified'
+                  : 'Preliminary / Pending Calculation'}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Section 6.2 VRP</span>
           </div>
@@ -87,10 +99,10 @@ export default function VentilationReportsView({
           <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80">
             <span className="text-[10px] text-slate-500 uppercase block">Compliance State</span>
             <span className={`font-bold flex items-center gap-1.5 ${
-              status === 'PASS' ? 'text-emerald-400' : status === 'FAIL' ? 'text-red-400' : 'text-amber-400'
+              hasCompliance ? 'text-emerald-400' : status === 'FAIL' ? 'text-red-400' : 'text-amber-400'
             }`}>
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {status === 'PASS' ? 'PASS (Compliant)' : (status || 'INCOMPLETE')}
+              {hasCompliance ? 'PASS (Compliant)' : `Status: ${status}`}
             </span>
             <span className="text-[10px] text-slate-400 block mt-0.5">Table 6-1 VRP</span>
           </div>
@@ -112,7 +124,7 @@ export default function VentilationReportsView({
           Engineering Scope & Standards Compliance Traceability
         </div>
         <p className="leading-relaxed text-slate-400">
-          This calculation report certifies outdoor air ventilation requirements derived strictly under the prescriptive Ventilation Rate Procedure (VRP)
+          This calculation report documents outdoor air ventilation requirements derived under the prescriptive Ventilation Rate Procedure (VRP)
           stipulated in <strong className="text-white">ANSI/ASHRAE Standard 62.1-2022</strong> including published <strong className="text-white">Addendum j</strong> local air density correction.
           All breathing-zone rates are grounded in Table 6-1 space classifications, Table 6-4 zone air distribution effectiveness (<span className="text-cyan-300 font-mono">Ez</span>), and Normative Appendix D psychrometric calculations.
         </p>

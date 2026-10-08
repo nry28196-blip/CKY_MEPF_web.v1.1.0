@@ -1,12 +1,94 @@
 import { jsPDF } from 'jspdf';
 import { ProjectContainer, HistoryItem } from '../types';
 
+/**
+ * Extracts the honest engineering validation/run status from a HistoryItem.
+ * Returns { status: string, isPass: boolean, isFail: boolean, isBlocked: boolean, isIncomplete: boolean, isAuthoritative: boolean, hasCompliance: boolean }
+ */
+export function extractRunStatusInfo(run: HistoryItem): {
+  status: string;
+  isPass: boolean;
+  isFail: boolean;
+  isBlocked: boolean;
+  isIncomplete: boolean;
+  isAuthoritative: boolean;
+  hasCompliance: boolean;
+} {
+  const params = run.parameters || {};
+  const lastCalc = params.lastCalculationResult;
+  const exhaustStatus = params.exhaustStatus;
+
+  // 1. Check if an explicit calculation result status is stored in parameters
+  let rawStatus: string | undefined = undefined;
+  if (lastCalc && typeof lastCalc.status === 'string') {
+    rawStatus = lastCalc.status.toUpperCase();
+  } else if (typeof exhaustStatus === 'string') {
+    rawStatus = exhaustStatus.toUpperCase();
+  } else if (typeof params.status === 'string') {
+    rawStatus = params.status.toUpperCase();
+  }
+
+  // 2. If not found in parameters, check the summary string
+  if (!rawStatus && typeof run.summary === 'string') {
+    const sumUpper = run.summary.toUpperCase();
+    if (sumUpper.includes('STATUS: PASS') || sumUpper.includes('AUDIT STATUS: PASS')) {
+      rawStatus = 'PASS';
+    } else if (sumUpper.includes('STATUS: FAIL') || sumUpper.includes('AUDIT STATUS: FAIL')) {
+      rawStatus = 'FAIL';
+    } else if (sumUpper.includes('STATUS: BLOCKED') || sumUpper.includes('AUDIT STATUS: BLOCKED')) {
+      rawStatus = 'BLOCKED';
+    } else if (sumUpper.includes('STATUS: INCOMPLETE') || sumUpper.includes('AUDIT STATUS: INCOMPLETE')) {
+      rawStatus = 'INCOMPLETE';
+    } else if (sumUpper.includes('DIAGNOSTIC ONLY') || sumUpper.includes('SIMPLIFIED MODEL')) {
+      rawStatus = 'DIAGNOSTIC ONLY';
+    }
+  }
+
+  const status = rawStatus || 'RECORDED';
+  const isPass = status === 'PASS';
+  const isFail = status === 'FAIL';
+  const isBlocked = status === 'BLOCKED';
+  const isIncomplete = status === 'INCOMPLETE';
+  const isAuthoritative = Boolean(lastCalc?.isAuthoritative);
+  const hasCompliance = Boolean(
+    lastCalc?.complianceSummary?.includes('COMPLIANT') ||
+    (isPass && isAuthoritative)
+  );
+
+  return { status, isPass, isFail, isBlocked, isIncomplete, isAuthoritative, hasCompliance };
+}
+
 export function exportCollectiveProjectPdf(project: ProjectContainer, runs: HistoryItem[]): void {
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 14;
   const contentWidth = pageWidth - margin * 2;
+
+  // Aggregate status derivation without inventing a global false PASS
+  const runStatuses = runs.map(extractRunStatusInfo);
+  let overallStatusText = 'RECORDED';
+  if (runs.length === 0) {
+    overallStatusText = 'EMPTY (NO RUNS)';
+  } else {
+    const hasFail = runStatuses.some(r => r.isFail);
+    const hasBlocked = runStatuses.some(r => r.isBlocked);
+    const hasIncomplete = runStatuses.some(r => r.isIncomplete);
+    const allPass = runStatuses.every(r => r.isPass);
+
+    if (hasFail) {
+      overallStatusText = 'FAIL (ATTENTION REQUIRED)';
+    } else if (hasBlocked) {
+      overallStatusText = 'BLOCKED';
+    } else if (hasIncomplete) {
+      overallStatusText = 'INCOMPLETE';
+    } else if (allPass) {
+      const allAuth = runStatuses.every(r => r.isAuthoritative);
+      overallStatusText = allAuth ? 'PASS / PRODUCTION VERIFIED' : 'PASS (CALCULATIONS VALID)';
+    } else {
+      overallStatusText = 'MULTI-RUN INVENTORY';
+    }
+  }
 
   // -------------------------------------------------------------
   // PAGE 1: COVER & EXECUTIVE SUMMARY
@@ -58,7 +140,7 @@ export function exportCollectiveProjectPdf(project: ProjectContainer, runs: Hist
   pdf.text(`Submittal Date: ${new Date().toLocaleDateString()}`, col2X, 60);
 
   pdf.text(`Total Runs: ${runs.length} Calculations`, col3X, 48);
-  pdf.text(`Status: PASS / PRODUCTION READY`, col3X, 54);
+  pdf.text(`Status: ${overallStatusText}`, col3X, 54);
   pdf.text(`Revision: Rev 0 (Issued for AHJ Review)`, col3X, 60);
 
   // Description if available
@@ -134,10 +216,25 @@ export function exportCollectiveProjectPdf(project: ProjectContainer, runs: Hist
       const summaryTrunc = run.summary.length > 38 ? run.summary.slice(0, 36) + '...' : run.summary;
       pdf.text(summaryTrunc, margin + 105, startY + 5.2);
 
-      // Status Badge
+      // Status Badge derived per run
+      const runStatus = extractRunStatusInfo(run);
       pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(22, 101, 52); // Emerald-800
-      pdf.text('PASS / VERIFIED', margin + 160, startY + 5.2);
+      if (runStatus.isPass) {
+        pdf.setTextColor(22, 101, 52); // Emerald-800
+        pdf.text(runStatus.isAuthoritative ? 'PASS (VERIFIED)' : 'PASS', margin + 160, startY + 5.2);
+      } else if (runStatus.isFail) {
+        pdf.setTextColor(185, 28, 28); // Red-700
+        pdf.text('FAIL', margin + 160, startY + 5.2);
+      } else if (runStatus.isBlocked) {
+        pdf.setTextColor(194, 65, 12); // Orange-700
+        pdf.text('BLOCKED', margin + 160, startY + 5.2);
+      } else if (runStatus.isIncomplete) {
+        pdf.setTextColor(180, 83, 9); // Amber-700
+        pdf.text('INCOMPLETE', margin + 160, startY + 5.2);
+      } else {
+        pdf.setTextColor(100, 116, 139); // Slate-500
+        pdf.text(runStatus.status.slice(0, 12), margin + 160, startY + 5.2);
+      }
 
       startY += 8;
     });
@@ -153,18 +250,18 @@ export function exportCollectiveProjectPdf(project: ProjectContainer, runs: Hist
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(8.5);
     pdf.setTextColor(15, 118, 110); // Emerald-700
-    pdf.text('ENGINEERING CERTIFICATION & QUALITY ASSURANCE STATEMENT', margin + 4, startY + 6);
+    pdf.text('ENGINEERING QUALITY ASSURANCE & SUBMITTAL BASIS', margin + 4, startY + 6);
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(7.5);
     pdf.setTextColor(51, 65, 85);
     pdf.text(
-      'All calculations grouped in this project container have been calculated under ANSI/ASHRAE 62.1-2022, IPC, NFPA, and NEC.',
+      'Calculations grouped in this project container are governed by applicable ASHRAE, IPC, NFPA, and NEC standard criteria.',
       margin + 4,
       startY + 11
     );
     pdf.text(
-      'This submittal is structured for coordinated multi-disciplinary mechanical, electrical, plumbing, and fire engineering approval.',
+      'Each calculation record preserves its individual validation status, audit trail, and authority level.',
       margin + 4,
       startY + 15.5
     );
@@ -292,10 +389,29 @@ export function exportCollectiveProjectPdf(project: ProjectContainer, runs: Hist
       pdf.setDrawColor(226, 232, 240);
       pdf.line(margin, cardY + cardHeight - 12, margin + contentWidth, cardY + cardHeight - 12);
 
+      const cardRunStatus = extractRunStatusInfo(run);
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
-      pdf.setTextColor(22, 101, 52);
-      pdf.text('✓ CODE COMPLIANCE: VERIFIED & AUDITED PASS', margin + 4, cardY + cardHeight - 4.5);
+
+      if (cardRunStatus.hasCompliance) {
+        pdf.setTextColor(22, 101, 52);
+        pdf.text('✓ CODE COMPLIANCE: VERIFIED (PASS)', margin + 4, cardY + cardHeight - 4.5);
+      } else if (cardRunStatus.isPass) {
+        pdf.setTextColor(22, 101, 52);
+        pdf.text('• CALCULATION STATUS: PASS (PRELIMINARY / NON-VERIFIED AUTHORITY)', margin + 4, cardY + cardHeight - 4.5);
+      } else if (cardRunStatus.isFail) {
+        pdf.setTextColor(185, 28, 28);
+        pdf.text('✕ CALCULATION STATUS: FAIL (NON-COMPLIANT / OUT OF SPEC)', margin + 4, cardY + cardHeight - 4.5);
+      } else if (cardRunStatus.isBlocked) {
+        pdf.setTextColor(194, 65, 12);
+        pdf.text('⚠ CALCULATION STATUS: BLOCKED (PARAMETERS UNVERIFIED)', margin + 4, cardY + cardHeight - 4.5);
+      } else if (cardRunStatus.isIncomplete) {
+        pdf.setTextColor(180, 83, 9);
+        pdf.text('⚠ CALCULATION STATUS: INCOMPLETE (PARAMETERS REQUIRED)', margin + 4, cardY + cardHeight - 4.5);
+      } else {
+        pdf.setTextColor(71, 85, 105);
+        pdf.text(`• CALCULATION STATUS: ${cardRunStatus.status.toUpperCase()}`, margin + 4, cardY + cardHeight - 4.5);
+      }
 
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(7);

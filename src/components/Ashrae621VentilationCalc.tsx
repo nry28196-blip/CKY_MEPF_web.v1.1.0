@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Wind,
   Users,
@@ -18,7 +18,12 @@ import {
   Layers,
   Building2,
   Sliders,
-  Scale
+  Scale,
+  Maximize2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+  ArrowRight
 } from 'lucide-react';
 import { useUnit } from '../lib/UnitContext';
 import TooltipLabel from './TooltipLabel';
@@ -75,6 +80,33 @@ export default function Ashrae621VentilationCalc({
   const [altitude, setAltitude] = useState<number>(0);
   const [airTemp, setAirTemp] = useState<number>(isMetric ? 20 : 68);
   const [showFullAuditLog, setShowFullAuditLog] = useState<boolean>(false);
+
+  // Responsive layout: Collapsible side-drawer state for smaller screens and expanded table mode
+  const [isInputDrawerOpen, setIsInputDrawerOpen] = useState<boolean>(false);
+  const [isDesktopSplitView, setIsDesktopSplitView] = useState<boolean>(true);
+
+  // Keyboard navigation: Escape key closes side-drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isInputDrawerOpen) {
+        setIsInputDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isInputDrawerOpen]);
+
+  // Body scroll lock while mobile drawer is open
+  useEffect(() => {
+    if (isInputDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isInputDrawerOpen]);
 
   const [zones, setZones] = useState<ZoneState[]>([
     {
@@ -296,294 +328,474 @@ export default function Ashrae621VentilationCalc({
     }
   ];
 
+  // Reusable Input Configuration Cards for desktop layout, collapsible side-drawer, and PDF print
+  const renderInputCardsContent = (isDrawer = false) => (
+    <div className="space-y-4">
+      {/* Card 1: Zone & Space Information */}
+      <div data-pdf-section="zone-info" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-cyan-950/60 border border-cyan-800/60 rounded-lg text-cyan-400">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                Zone & Space Information
+              </h3>
+              <span className="text-[10px] text-slate-500 font-mono">1. Space Category & Geometry</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded">
+              {activeSpaceType?.airClass ? `Air Class ${activeSpaceType.airClass}` : 'Class 1'}
+            </span>
+            {!isDrawer && (
+              <button
+                type="button"
+                onClick={() => setIsDesktopSplitView(false)}
+                className="hidden lg:inline-flex items-center p-1 text-slate-400 hover:text-cyan-400 hover:bg-slate-800/80 rounded transition-colors cursor-pointer"
+                title="Collapse inputs into side-drawer for full table view"
+              >
+                <PanelLeftClose className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3.5">
+          {/* Space Category Dropdown */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Space Type / Occupancy Category
+            </label>
+            <select
+              className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500 transition-colors"
+              value={activeZone.spaceTypeId}
+              onChange={(e) => updateZone(activeZone.id, 'spaceTypeId', e.target.value)}
+            >
+              {spaceTypes.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.category})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Floor Area */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-slate-300">
+                Floor Area (Az)
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {isMetric ? 'Square meters' : 'Square feet'}
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs font-mono border border-slate-800 focus:border-cyan-500 pr-12"
+                value={activeZone.area}
+                onChange={(e) => updateZone(activeZone.id, 'area', e.target.value ? Number(e.target.value) : 0)}
+              />
+              <span className="absolute right-3 top-2 text-[10px] font-mono text-slate-500">
+                {isMetric ? 'm²' : 'ft²'}
+              </span>
+            </div>
+          </div>
+
+          {/* Occupancy / Design Population */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-slate-300">
+                Design Population (Pz)
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded bg-slate-950 border-slate-800 text-cyan-500 w-3.5 h-3.5"
+                  checked={activeZone.useDefaultOccupancy}
+                  onChange={(e) => updateZone(activeZone.id, 'useDefaultOccupancy', e.target.checked)}
+                />
+                <span className="text-[10px] text-slate-400 font-medium">Code Default</span>
+              </label>
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                disabled={activeZone.useDefaultOccupancy}
+                className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs font-mono border border-slate-800 disabled:opacity-50 focus:border-cyan-500 pr-14"
+                value={activeZone.occupants}
+                onChange={(e) => updateZone(activeZone.id, 'occupants', e.target.value ? Number(e.target.value) : '')}
+              />
+              <span className="absolute right-3 top-2 text-[10px] font-mono text-slate-500">
+                people
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1 font-mono">
+              Default Density: {activeSpaceType?.defaultOccupancyMetric ?? 5} people / 100 m²
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Card 2: Ventilation Parameters */}
+      <div data-pdf-section="vent-params" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-800/80 mb-3.5">
+          <div className="p-1.5 bg-cyan-950/60 border border-cyan-800/60 rounded-lg text-cyan-400">
+            <Wind className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              Ventilation Parameters
+            </h3>
+            <span className="text-[10px] text-slate-500 font-mono">2. ASHRAE Table 6-1 Rates & Ez</span>
+          </div>
+        </div>
+
+        <div className="space-y-3.5">
+          {/* Rp and Ra Display */}
+          <div className="grid grid-cols-2 gap-2.5 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+            <div>
+              <span className="block text-[10px] text-slate-500 uppercase font-semibold">People Rate (Rp)</span>
+              <span className="text-xs font-mono font-bold text-cyan-400">
+                {rpDisplay.toFixed(1)} {isMetric ? 'L/s·person' : 'cfm/person'}
+              </span>
+            </div>
+            <div>
+              <span className="block text-[10px] text-slate-500 uppercase font-semibold">Area Rate (Ra)</span>
+              <span className="text-xs font-mono font-bold text-cyan-400">
+                {raDisplay.toFixed(3)} {isMetric ? 'L/s·m²' : 'cfm/ft²'}
+              </span>
+            </div>
+          </div>
+
+          {/* Ez Selection Dropdown */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Air Distribution Effectiveness (Ez)
+            </label>
+            <select
+              className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500 transition-colors"
+              value={activeZone.ezId}
+              onChange={(e) => updateZone(activeZone.id, 'ezId', e.target.value)}
+            >
+              {ezValues.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.name} (Ez = {e.ez})
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-slate-500 mt-1 font-mono">
+              Table 6-4 Effectiveness Factor: <span className="text-white font-bold">{ezDisplay.toFixed(2)}</span>
+            </p>
+          </div>
+
+          {/* Atmospheric Density Inputs */}
+          <div className="pt-2 border-t border-slate-800/80">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold text-slate-300">
+                Air Density Correction (Eρ)
+              </span>
+              <span className="text-[10px] font-mono text-emerald-400">
+                Factor: {epDisplay.toFixed(3)}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">
+                  Elevation ({isMetric ? 'm' : 'ft'})
+                </label>
+                <input
+                  type="number"
+                  className="w-full bg-slate-950 text-white rounded-lg px-2.5 py-1.5 text-xs font-mono border border-slate-800 focus:border-cyan-500"
+                  value={altitude}
+                  onChange={(e) => setAltitude(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-0.5">
+                  Design Temp ({isMetric ? '°C' : '°F'})
+                </label>
+                <input
+                  type="number"
+                  className="w-full bg-slate-950 text-white rounded-lg px-2.5 py-1.5 text-xs font-mono border border-slate-800 focus:border-cyan-500"
+                  value={airTemp}
+                  onChange={(e) => setAirTemp(Number(e.target.value))}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card 3: Advanced / Optional */}
+      <div data-pdf-section="advanced-params" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-800/80 mb-3.5">
+          <div className="p-1.5 bg-slate-800 rounded-lg text-slate-400">
+            <Sliders className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+              Advanced / Optional
+            </h3>
+            <span className="text-[10px] text-slate-500 font-mono">3. System & Air Volume Topology</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+              Architecture Configuration
+            </label>
+            <select
+              className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500"
+              value={systemType}
+              onChange={(e) => setSystemType(e.target.value as any)}
+            >
+              <option value="single">Single-Zone System (Eq 6-1 / 6-2)</option>
+              <option value="multi_simplified">Multi-Zone (Simplified Procedure)</option>
+              <option value="multi_alternative">Multi-Zone (Alternative Appendix A)</option>
+            </select>
+          </div>
+
+          {systemType !== 'single' && (
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Air Volume Modulation
+              </label>
+              <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsVAV(false)}
+                  className={`py-1 text-xs font-medium rounded transition-colors ${
+                    !isVAV ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Constant Volume (CV)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsVAV(true)}
+                  className={`py-1 text-xs font-medium rounded transition-colors ${
+                    isVAV ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Variable Air Volume (VAV)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {systemType !== 'single' && (
+            <div className="pt-2 flex justify-between items-center">
+              <span className="text-xs text-slate-400 font-medium">Zones in System: {zones.length}</span>
+              <button
+                onClick={addZone}
+                className="btn-micro-action flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-cyan-400" />
+                Add Zone
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      {/* Three-Column Desktop Engineering Layout */}
+      {/* Responsive Input Parameters Control Bar */}
+      <div className="bg-slate-900/85 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 backdrop-blur-md">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 bg-cyan-950/70 border border-cyan-800/60 rounded-lg text-cyan-400 shrink-0">
+            <Sliders className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-white tracking-wide truncate">
+                {activeSpaceType?.name || 'Office space'}
+              </span>
+              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded shrink-0">
+                Air Class {activeSpaceType?.airClass || 1}
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800 shrink-0">
+                {systemType === 'single' ? 'Single-Zone' : systemType === 'multi_simplified' ? 'Multi-Zone (Simplified)' : 'Multi-Zone (Appendix A)'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-mono truncate mt-0.5">
+              Area: <span className="text-slate-200">{activeZone.area} {isMetric ? 'm²' : 'ft²'}</span> · Occ: <span className="text-slate-200">{activeZone.occupants || 5}</span> ({activeZone.useDefaultOccupancy ? 'Default' : 'Design'}) · Ez: <span className="text-cyan-400">{ezDisplay.toFixed(2)}</span> · Eρ: <span className="text-emerald-400">{epDisplay.toFixed(3)}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+          {/* Collapsible Side-Drawer Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsInputDrawerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-sm shadow-cyan-950/50 transition-all cursor-pointer"
+            title="Open collapsible side-drawer for input parameters"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Parameters Drawer</span>
+          </button>
+
+          {/* Desktop Layout Switcher: 3-Col Split vs Full Table View */}
+          <button
+            type="button"
+            onClick={() => setIsDesktopSplitView(!isDesktopSplitView)}
+            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+            title={isDesktopSplitView ? 'Collapse input cards for full output tables view' : 'Show 3-column split layout with inputs inline'}
+          >
+            {isDesktopSplitView ? (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Full Table View</span>
+              </>
+            ) : (
+              <>
+                <PanelLeftOpen className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Split View (3-Col)</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Floating Action Button for smaller screens: Instant access to input drawer from anywhere */}
+      <div className="lg:hidden fixed bottom-6 right-6 z-40">
+        <button
+          type="button"
+          onClick={() => setIsInputDrawerOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-full shadow-xl shadow-cyan-950/90 border border-cyan-400/40 transition-transform active:scale-95 cursor-pointer"
+          title="Open Input Parameters Drawer"
+        >
+          <Sliders className="w-4 h-4" />
+          <span>Edit Inputs</span>
+          <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse" />
+        </button>
+      </div>
+
+      {/* Collapsible Side-Drawer for Input Parameters */}
+      <AnimatePresence>
+        {isInputDrawerOpen && (
+          <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true" aria-label="Input Parameters Drawer">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsInputDrawerOpen(false)}
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+            />
+
+            {/* Slide-over Drawer Panel */}
+            <div className="fixed inset-y-0 left-0 max-w-full flex pr-10 sm:pr-16 z-50">
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+                className="w-screen max-w-md sm:max-w-lg bg-[#0B132B] border-r border-slate-800 shadow-2xl flex flex-col"
+              >
+                {/* Drawer Header */}
+                <div className="px-5 py-4 border-b border-slate-800/90 bg-slate-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-cyan-950/70 border border-cyan-800/60 rounded-lg text-cyan-400">
+                      <Sliders className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                        <span>Input Parameters</span>
+                        <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded font-normal">
+                          Side-Drawer
+                        </span>
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        Adjust space parameters, airflow rates, and system topology
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsInputDrawerOpen(false)}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
+                    title="Close Side-Drawer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Drawer Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                  {renderInputCardsContent(true)}
+                </div>
+
+                {/* Sticky Drawer Footer */}
+                <div className="p-4 border-t border-slate-800 bg-slate-950/90 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
+                  <div className="min-w-0 font-mono">
+                    <span className="text-[9px] text-slate-500 uppercase block">Required OA (Voz)</span>
+                    <span className="text-xs font-bold text-cyan-400 truncate">
+                      {finalAirflowDisplay !== null ? `${finalAirflowDisplay.toFixed(1)} ${isMetric ? 'L/s' : 'cfm'}` : '--'} · {isPass ? 'PASS' : engineResult.status}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsInputDrawerOpen(false)}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl shadow-md shadow-cyan-950/50 flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span>View Output Tables</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </motion.aside>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Hidden print container: Guarantees input parameter cards are present during PDF capture */}
+      <div className="hidden pdf-print-mode:block print:block space-y-4 mb-6">
+        {renderInputCardsContent(true)}
+      </div>
+
+      {/* Main Engineering Calculation Workspace Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
         {/* ============================================================== */}
         {/* COLUMN 1: INPUT / CONFIGURATION CARDS (col-span-4)              */}
+        {/* Visible on desktop in split view; on smaller screens or        */}
+        {/* full table view, accessible via the Collapsible Side-Drawer    */}
         {/* ============================================================== */}
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="lg:col-span-4 space-y-4"
-        >
-          
-          {/* Card 1: Zone & Space Information */}
-          <div data-pdf-section="zone-info" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-cyan-950/60 border border-cyan-800/60 rounded-lg text-cyan-400">
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Zone & Space Information
-                  </h3>
-                  <span className="text-[10px] text-slate-500 font-mono">1. Space Category & Geometry</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded">
-                {activeSpaceType?.airClass ? `Air Class ${activeSpaceType.airClass}` : 'Class 1'}
-              </span>
-            </div>
-
-            <div className="space-y-3.5">
-              {/* Space Category Dropdown */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Space Type / Occupancy Category
-                </label>
-                <select
-                  className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500 transition-colors"
-                  value={activeZone.spaceTypeId}
-                  onChange={(e) => updateZone(activeZone.id, 'spaceTypeId', e.target.value)}
-                >
-                  {spaceTypes.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.category})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Floor Area */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-300">
-                    Floor Area (Az)
-                  </label>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {isMetric ? 'Square meters' : 'Square feet'}
-                  </span>
-                </div>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs font-mono border border-slate-800 focus:border-cyan-500 pr-12"
-                    value={activeZone.area}
-                    onChange={(e) => updateZone(activeZone.id, 'area', e.target.value ? Number(e.target.value) : 0)}
-                  />
-                  <span className="absolute right-3 top-2 text-[10px] font-mono text-slate-500">
-                    {isMetric ? 'm²' : 'ft²'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Occupancy / Design Population */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-300">
-                    Design Population (Pz)
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="rounded bg-slate-950 border-slate-800 text-cyan-500 w-3.5 h-3.5"
-                      checked={activeZone.useDefaultOccupancy}
-                      onChange={(e) => updateZone(activeZone.id, 'useDefaultOccupancy', e.target.checked)}
-                    />
-                    <span className="text-[10px] text-slate-400 font-medium">Code Default</span>
-                  </label>
-                </div>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    disabled={activeZone.useDefaultOccupancy}
-                    className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs font-mono border border-slate-800 disabled:opacity-50 focus:border-cyan-500 pr-14"
-                    value={activeZone.occupants}
-                    onChange={(e) => updateZone(activeZone.id, 'occupants', e.target.value ? Number(e.target.value) : '')}
-                  />
-                  <span className="absolute right-3 top-2 text-[10px] font-mono text-slate-500">
-                    people
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                  Default Density: {activeSpaceType?.defaultOccupancyMetric ?? 5} people / 100 m²
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Ventilation Parameters */}
-          <div data-pdf-section="vent-params" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-800/80 mb-3.5">
-              <div className="p-1.5 bg-cyan-950/60 border border-cyan-800/60 rounded-lg text-cyan-400">
-                <Wind className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Ventilation Parameters
-                </h3>
-                <span className="text-[10px] text-slate-500 font-mono">2. ASHRAE Table 6-1 Rates & Ez</span>
-              </div>
-            </div>
-
-            <div className="space-y-3.5">
-              {/* Rp and Ra Display */}
-              <div className="grid grid-cols-2 gap-2.5 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                <div>
-                  <span className="block text-[10px] text-slate-500 uppercase font-semibold">People Rate (Rp)</span>
-                  <span className="text-xs font-mono font-bold text-cyan-400">
-                    {rpDisplay.toFixed(1)} {isMetric ? 'L/s·person' : 'cfm/person'}
-                  </span>
-                </div>
-                <div>
-                  <span className="block text-[10px] text-slate-500 uppercase font-semibold">Area Rate (Ra)</span>
-                  <span className="text-xs font-mono font-bold text-cyan-400">
-                    {raDisplay.toFixed(3)} {isMetric ? 'L/s·m²' : 'cfm/ft²'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Ez Selection Dropdown */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Air Distribution Effectiveness (Ez)
-                </label>
-                <select
-                  className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500 transition-colors"
-                  value={activeZone.ezId}
-                  onChange={(e) => updateZone(activeZone.id, 'ezId', e.target.value)}
-                >
-                  {ezValues.map(e => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} (Ez = {e.ez})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                  Table 6-4 Effectiveness Factor: <span className="text-white font-bold">{ezDisplay.toFixed(2)}</span>
-                </p>
-              </div>
-
-              {/* Atmospheric Density Inputs */}
-              <div className="pt-2 border-t border-slate-800/80">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-slate-300">
-                    Air Density Correction (Eρ)
-                  </span>
-                  <span className="text-[10px] font-mono text-emerald-400">
-                    Factor: {epDisplay.toFixed(3)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-0.5">
-                      Elevation ({isMetric ? 'm' : 'ft'})
-                    </label>
-                    <input
-                      type="number"
-                      className="w-full bg-slate-950 text-white rounded-lg px-2.5 py-1.5 text-xs font-mono border border-slate-800 focus:border-cyan-500"
-                      value={altitude}
-                      onChange={(e) => setAltitude(Number(e.target.value))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 mb-0.5">
-                      Design Temp ({isMetric ? '°C' : '°F'})
-                    </label>
-                    <input
-                      type="number"
-                      className="w-full bg-slate-950 text-white rounded-lg px-2.5 py-1.5 text-xs font-mono border border-slate-800 focus:border-cyan-500"
-                      value={airTemp}
-                      onChange={(e) => setAirTemp(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Advanced / Optional */}
-          <div data-pdf-section="advanced-params" className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-800/80 mb-3.5">
-              <div className="p-1.5 bg-slate-800 rounded-lg text-slate-400">
-                <Sliders className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Advanced / Optional
-                </h3>
-                <span className="text-[10px] text-slate-500 font-mono">3. System & Air Volume Topology</span>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Architecture Configuration
-                </label>
-                <select
-                  className="w-full bg-slate-950 text-white rounded-lg px-3 py-2 text-xs border border-slate-800 focus:border-cyan-500"
-                  value={systemType}
-                  onChange={(e) => setSystemType(e.target.value as any)}
-                >
-                  <option value="single">Single-Zone System (Eq 6-1 / 6-2)</option>
-                  <option value="multi_simplified">Multi-Zone (Simplified Procedure)</option>
-                  <option value="multi_alternative">Multi-Zone (Alternative Appendix A)</option>
-                </select>
-              </div>
-
-              {systemType !== 'single' && (
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                    Air Volume Modulation
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setIsVAV(false)}
-                      className={`py-1 text-xs font-medium rounded transition-colors ${
-                        !isVAV ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Constant Volume (CV)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsVAV(true)}
-                      className={`py-1 text-xs font-medium rounded transition-colors ${
-                        isVAV ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Variable Air Volume (VAV)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {systemType !== 'single' && (
-                <div className="pt-2 flex justify-between items-center">
-                  <span className="text-xs text-slate-400 font-medium">Zones in System: {zones.length}</span>
-                  <button
-                    onClick={addZone}
-                    className="btn-micro-action flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-cyan-400" />
-                    Add Zone
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-        </motion.div>
+        {isDesktopSplitView && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="hidden lg:block lg:col-span-4 space-y-4"
+          >
+            {renderInputCardsContent(false)}
+          </motion.div>
+        )}
 
         {/* ============================================================== */}
-        {/* COLUMN 2: VERIFICATION & TRACE (col-span-4)                     */}
+        {/* COLUMN 2: VERIFICATION & TRACE (col-span-12 / col-span-6 / col-span-4) */}
         {/* ============================================================== */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, delay: 0.04 }}
-          className="lg:col-span-4 space-y-4"
+          className={`space-y-4 ${
+            isDesktopSplitView ? 'col-span-12 md:col-span-6 lg:col-span-4' : 'col-span-12 md:col-span-6'
+          }`}
         >
           
           {/* Card 1: Validation Status */}
@@ -799,7 +1011,7 @@ export default function Ashrae621VentilationCalc({
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">Authority</span>
                 <span className={engineResult?.isAuthoritative ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                  {engineResult?.isAuthoritative ? 'Verified Production' : 'Preliminary / Diagnostic'}
+                  {engineResult?.isAuthoritative ? 'Authoritative Production' : 'Preliminary / Authority Not Verified'}
                 </span>
               </div>
             </div>
@@ -814,13 +1026,15 @@ export default function Ashrae621VentilationCalc({
         </motion.div>
 
         {/* ============================================================== */}
-        {/* COLUMN 3: RESULTS (col-span-4)                                  */}
+        {/* COLUMN 3: RESULTS (col-span-12 / col-span-6 / col-span-4)      */}
         {/* ============================================================== */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, delay: 0.08 }}
-          className="lg:col-span-4 space-y-4"
+          className={`space-y-4 ${
+            isDesktopSplitView ? 'col-span-12 md:col-span-6 lg:col-span-4' : 'col-span-12 md:col-span-6'
+          }`}
         >
           
           {/* Card 1: Results Hero Card */}
@@ -865,15 +1079,22 @@ export default function Ashrae621VentilationCalc({
                   {isMetric ? 'L/s' : 'cfm'}
                 </span>
               </div>
-              {isPass && engineResult?.isAuthoritative ? (
-                <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Verified Production Calculation (PASS)</span>
-                </div>
+              {isPass ? (
+                engineResult?.isAuthoritative ? (
+                  <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Calculation PASS — Production Authority Verified</span>
+                  </div>
+                ) : (
+                  <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Calculation PASS — Preliminary / Authority Not Verified</span>
+                  </div>
+                )
               ) : (
                 <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-amber-400 font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Preliminary / Non-Verified Calculation</span>
+                  <span>Validation Incomplete — Check Parameters</span>
                 </div>
               )}
             </div>
